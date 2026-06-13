@@ -462,11 +462,39 @@ class MCPManager:
         logger.info(f"已卸载 MCP 服务器: {server_id}")
         return {"status": "ok", "message": f"服务器 '{server_id}' 已卸载"}
 
+    # 核心 MCP 服务器的硬编码配置（npm 包名可能与 server_id 不同）
+    _CORE_SERVER_DEFAULTS = {
+        "playwright": {
+            "id": "playwright",
+            "name": "Playwright Browser Automation",
+            "npm_package": "@playwright/mcp",
+            "command": "cmd",
+            "args": ["/c", "npx", "-y", "@playwright/mcp"],
+            "description": "浏览器自动化（Playwright MCP）",
+            "icon": "🌐",
+            "category": "浏览器",
+        },
+        "fetch": {
+            "id": "fetch",
+            "name": "Web Fetch",
+            "npm_package": "mcp-server-fetch",
+            "command": "python",
+            "args": ["-m", "mcp_server_fetch"],
+            "description": "网页内容抓取（HTTP fetch）",
+            "icon": "📥",
+            "category": "网络",
+        },
+    }
+
     def _find_market_entry(self, server_id: str) -> Optional[dict]:
-        """从市场数据中查找服务器"""
+        """从市场数据中查找服务器，核心服务器有硬编码兜底"""
+        # 先查市场数据
         for s in self._marketplace_data.get("servers", []):
             if s["id"] == server_id:
                 return s
+        # 兜底：核心服务器用硬编码配置
+        if server_id in self._CORE_SERVER_DEFAULTS:
+            return self._CORE_SERVER_DEFAULTS[server_id]
         return None
 
     # ======================== 启动/停止 ========================
