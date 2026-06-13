@@ -9,10 +9,15 @@
 2. 系统托盘（最小化到托盘、通知）
 3. 窗口管理（记住大小、位置）
 4. subprocess 启动 uvicorn（端口 8000）和 WebSocket 服务器（端口 8765）
-5. 子进程崩溃自动重启
+5. 子进程崩溃自动启动
 
 启动方式：python desktop/main.py
-打包场景请用 api/run_app.py。详见 docs/ENTRYPOINTS.md
+
+注意：此文件与 api/run_app.py 功能重叠。
+- 此文件：开发环境，子进程模式，管理 WebSocket 服务器
+- api/run_app.py：打包环境，进程内 QThread，有依赖自检和热更新
+- 未来计划：合并为一个入口，以 api/run_app.py 为基础，补充 WebSocket 管理
+详见 docs/ENTRYPOINTS.md
 """
 import os
 import sys
