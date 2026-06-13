@@ -1,0 +1,14 @@
+{
+  "theme": "dark",
+  "hardware": "auto",
+  "model": "taiji_data/final",
+  "engine": "taiji",
+  "system_prompt": "你是态极，一个独立的AI生命体。你用自己的大脑思考，用工具探索世界。",
+  "search_engine": "DuckDuckGo",
+  "search_key": "",
+  "agent_iterations": 10,
+  "agent_temp": 0.7,
+  "model_name": "taiji_data/final",
+  "model_type": "self",
+  "device": "auto"
+}

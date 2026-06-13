@@ -1,0 +1,235 @@
+/* Targeted overrides loaded last. */
+.theme-light .app-wrapper {
+  background: #f7f9fc;
+}
+
+.theme-light .app-wrapper::before {
+  display: none;
+  background: none;
+  animation: none;
+}
+
+.theme-light .sidebar,
+.theme-light .main-content,
+.theme-light .chat-header,
+.theme-light .input-container,
+.theme-light .message-row.assistant .bubble,
+.theme-light .quick-btn,
+.theme-light .tool-card,
+.theme-light .train-file-item,
+.theme-light .preview-sample {
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+}
+
+.theme-light .message-row.user .bubble,
+.theme-light .send-btn,
+.theme-light .preset-btn.active {
+  background: var(--primary-gradient);
+  box-shadow: 0 4px 14px rgba(47,111,115,0.18);
+}
+
+.theme-light .sidebar-logo h2,
+.theme-light .empty-state h1,
+.theme-light .view-header h2 {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--text);
+}
+
+.theme-light .settings-btn.active,
+.theme-light .session-item.active {
+  color: var(--primary);
+  border-left-color: var(--primary);
+  background: rgba(47,111,115,0.09);
+}
+
+.theme-light .settings-btn:hover,
+.theme-light .session-item:hover {
+  background: rgba(47,111,115,0.07);
+}
+
+.theme-light .settings-btn.active .nav-icon-wrap {
+  color: #fff;
+  background: var(--primary);
+}
+
+.theme-light .chat-workbench {
+  background: #f8fafc;
+}
+
+.theme-light .chat-topbar,
+.theme-light .composer-area {
+  background: rgba(255,255,255,0.96);
+  box-shadow: 0 1px 0 rgba(15,23,42,0.04);
+}
+
+.theme-light .messages-area {
+  background: #f7f9fc;
+}
+
+.theme-light .message-avatar,
+.theme-light .empty-symbol {
+  background: #fff;
+  color: var(--primary);
+  border-color: rgba(15,23,42,0.1);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.05);
+}
+
+.theme-light .message-row.assistant .bubble {
+  background: #fff;
+  border-color: rgba(15,23,42,0.09);
+  border-left-color: var(--primary);
+  box-shadow: 0 8px 22px rgba(15,23,42,0.05);
+}
+
+.theme-light .message-row.user .bubble,
+.theme-light .message-row.user .message-avatar,
+.theme-light .send-btn {
+  background: linear-gradient(135deg, #2563eb 0%, #0f766e 100%);
+  box-shadow: 0 8px 20px rgba(37,99,235,0.16);
+}
+
+.theme-light .message-meta,
+.theme-light .mode-label,
+.theme-light .metric-chip {
+  color: #526578;
+}
+
+.theme-light .message-meta {
+  background: transparent;
+}
+
+.theme-light .life-chip {
+  background: #ecfeff;
+  color: #0f766e;
+  border-color: #bae6fd;
+}
+
+.theme-light .metric-chip,
+.theme-light .mode-switch,
+.theme-light .reasoning-toggle,
+.theme-light .life-needs-indicator {
+  background: #f1f5f9;
+  border-color: rgba(15,23,42,0.08);
+}
+
+.theme-light .mode-switch button.active,
+.theme-light .input-container,
+.theme-light .msg-action-btn,
+.theme-light .runtime-notice {
+  background: #fff;
+  border-color: rgba(15,23,42,0.1);
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+}
+
+.theme-light .reasoning-content,
+.theme-light .tool-card,
+.theme-light .chat-attachment-chip,
+.theme-light .chat-attachment-card,
+.theme-light .message-media-card,
+.theme-light .media-entry {
+  background: #f8fafc;
+  border-color: rgba(15,23,42,0.08);
+}
+
+.theme-light .media-entry:hover {
+  background: #ecfeff;
+  border-color: #bae6fd;
+}
+
+.theme-light .dedicated-view {
+  background: #f7f9fc;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.theme-light .view-header {
+  border-bottom-color: rgba(15,23,42,0.08);
+}
+
+.theme-light .panel-section {
+  background: #fff;
+  border-color: rgba(15,23,42,0.08);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15,23,42,0.04);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.theme-light .panel-section:hover {
+  border-color: rgba(15,23,42,0.12);
+  box-shadow: 0 14px 34px rgba(15,23,42,0.06);
+  transform: none;
+}
+
+.theme-light .panel-header {
+  background: #fff;
+  border-bottom-color: rgba(15,23,42,0.08);
+}
+
+.theme-light .panel-content {
+  background: #fff;
+}
+
+.theme-light .tools-grid .tool-card {
+  background: #f8fafc;
+  border-color: rgba(15,23,42,0.08);
+  border-radius: 8px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.theme-light .tools-grid .tool-card:hover {
+  background: #fff;
+  border-color: rgba(15,118,110,0.24);
+  box-shadow: 0 8px 18px rgba(15,23,42,0.06);
+  transform: translateY(-1px);
+}
+
+.theme-light .tool-icon {
+  color: #0f766e;
+  filter: none;
+}
+
+.theme-light .tool-desc,
+.theme-light .tool-source {
+  color: #64748b;
+}
+
+.theme-light .life-status-view,
+.theme-light .workspace-view {
+  background: #f7f9fc;
+}
+
+.theme-light .needs-section,
+.theme-light .status-card,
+.theme-light .log-entry,
+.theme-light .ws-toolbar,
+.theme-light .ws-sidebar,
+.theme-light .monaco-wrapper,
+.theme-light .terminal-wrapper {
+  background: #fff;
+  border-color: rgba(15,23,42,0.08);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.theme-light .ws-content,
+.theme-light .monaco-editor-container,
+.theme-light .terminal-container {
+  background: #fff;
+}
+
+.theme-light .monaco-toolbar,
+.theme-light .monaco-statusbar,
+.theme-light .terminal-toolbar {
+  background: #f8fafc;
+  border-color: rgba(15,23,42,0.08);
+}
+
+.theme-light .terminal-status {
+  border-top: 1px solid rgba(15,23,42,0.06);
+}

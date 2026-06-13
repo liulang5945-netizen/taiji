@@ -1,0 +1,22 @@
+/**
+ * 态极 · 无极 —— 样式汇总入口
+ * Glassmorphism + Taiji Philosophy
+ */
+
+/* 设计变量系统 */
+@import './variables.css';
+
+/* 动画系统 */
+@import './animations.css';
+
+/* 基础样式 */
+@import './base.css';
+
+/* 布局系统 */
+@import './layout.css';
+
+/* 保留旧样式作为过渡（逐步迁移中） */
+@import '../app.css';
+
+/* 最后加载的定向覆盖 */
+@import './overrides.css';

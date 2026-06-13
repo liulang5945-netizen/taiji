@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node
+node_modules/
+
+# Model files and data
+model_cache/
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+taiji_checkpoints/
+*.pkl
+*.npy
+
+# User data
+user_data/
+rag_data/
+knowledge_store/
+agent_workspace/
+taiji/data/
+taiji/evolution_data/
+taiji/feed_data/
+taiji/life_data/
+taiji/play_data/
+taiji/sleep_data/
+taiji/test_evolution/
+taiji_data/
+
+# Security
+security/.jwt_secret
+security/audit_logs/
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
