@@ -1,8 +1,12 @@
 """
-态极启动脚本
-===========
+态极 WebSocket 服务器启动脚本
+=============================
 
-启动态极 WebSocket 服务器。
+启动 taiji.core.websocket_server（端口 8765）。
+可独立运行，也可被 desktop/main.py 通过子进程调用。
+
+注意：这不是 HTTP API 服务器。HTTP API 由 api/app.py + uvicorn 提供（端口 8000）。
+详见 docs/ENTRYPOINTS.md
 """
 import asyncio
 import logging

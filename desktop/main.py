@@ -1,22 +1,18 @@
 """
-态极桌面客户端 (Desktop Client)
-================================
+[产品入口] 态极桌面客户端 — 开发环境版本
+==========================================
 
-原生桌面应用，嵌入 Web 前端，自动管理后端生命周期。
+原生桌面应用，嵌入 Web 前端，通过子进程管理后端生命周期。
 
 功能：
 1. 嵌入 Vue 前端（QWebEngineView）
 2. 系统托盘（最小化到托盘、通知）
-3. 原生菜单（文件、视图、帮助）
-4. 窗口管理（记住大小、位置）
-5. 自动启动后端
-6. 自动更新检查
-7. 全局快捷键
+3. 窗口管理（记住大小、位置）
+4. subprocess 启动 uvicorn（端口 8000）和 WebSocket 服务器（端口 8765）
+5. 子进程崩溃自动重启
 
-启动方式：
-    python desktop/main.py
-    或
-    python -m desktop
+启动方式：python desktop/main.py
+打包场景请用 api/run_app.py。详见 docs/ENTRYPOINTS.md
 """
 import os
 import sys
@@ -133,6 +129,76 @@ class BackendManager:
         return self._running and self.process and self.process.poll() is None
 
 
+class WebSocketManager:
+    """WebSocket 核心服务器管理器（端口 8765）"""
+
+    def __init__(self):
+        self.process = None
+        self.port = 8765
+        self._running = False
+
+    def start(self):
+        """启动 WebSocket 服务器"""
+        if self._running:
+            return
+
+        cmd = [sys.executable, str(ROOT_DIR / "start_taiji.py")]
+
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                cwd=str(ROOT_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
+            )
+            self._running = True
+            logger.info(f"WebSocket server started on port {self.port} (PID: {self.process.pid})")
+
+            self._wait_for_ready()
+
+        except Exception as e:
+            logger.error(f"Failed to start WebSocket server: {e}")
+
+    def _wait_for_ready(self, timeout: int = 15):
+        """等待 WebSocket 服务器就绪"""
+        import socket
+
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(1)
+                result = s.connect_ex(('localhost', self.port))
+                s.close()
+                if result == 0:
+                    logger.info(f"WebSocket server ready on port {self.port}")
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        logger.warning("WebSocket server startup timeout")
+        return False
+
+    def stop(self):
+        """停止 WebSocket 服务器"""
+        if self.process:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5)
+                logger.info("WebSocket server stopped")
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+            self._running = False
+
+    def is_running(self) -> bool:
+        return self._running and self.process and self.process.poll() is None
+
+
 def main():
     """启动态极桌面客户端"""
     try:
@@ -170,6 +236,10 @@ def main():
     backend = BackendManager()
     backend.start()
 
+    # 启动 WebSocket 核心服务器
+    ws_server = WebSocketManager()
+    ws_server.start()
+
     # 创建主窗口
     class TaijiWindow(QMainWindow):
         def __init__(self):
@@ -195,6 +265,7 @@ def main():
 
             # 创建 Web 视图
             self.web_view = QWebEngineView()
+            self._frontend_loaded = False
 
             # 配置 Web 设置
             web_settings = self.web_view.settings()
@@ -222,22 +293,21 @@ def main():
             self.status_timer.timeout.connect(self._check_backend)
             self.status_timer.start(10000)
 
-            # 延迟加载前端，等后端就绪
-            QTimer.singleShot(500, self._load_frontend)
+            # 显示载入动画并加载前端
+            QTimer.singleShot(300, self._show_loading)
 
         def _show_loading(self):
             """显示载入动画页面"""
             loading_path = ROOT_DIR / "desktop" / "loading.html"
             if loading_path.exists():
                 self.web_view.setUrl(QUrl.fromLocalFile(str(loading_path)))
-                # 后端就绪后切换到主界面
-                QTimer.singleShot(2000, self._load_frontend)
             else:
-                # 没有加载页面，直接加载主界面
                 self._load_frontend()
 
         def _load_frontend(self):
             """加载前端（由后端静态文件服务提供）"""
+            if self._frontend_loaded:
+                return
             if not backend.is_running():
                 QTimer.singleShot(1000, self._load_frontend)
                 return
@@ -252,8 +322,11 @@ def main():
             logger.info(f"Page loaded: {current_url} (ok={ok})")
 
             if ok:
-                # 如果是主界面加载完成，捕获 JS 错误
+                # 如果是主界面加载完成
                 if f"127.0.0.1:{backend.port}" in current_url:
+                    if self._frontend_loaded:
+                        return
+                    self._frontend_loaded = True
                     logger.info("Frontend loaded successfully")
                     # 注入错误捕获
                     self.web_view.page().runJavaScript("""
@@ -340,10 +413,13 @@ def main():
             self.activateWindow()
 
         def _check_backend(self):
-            """检查后端状态"""
+            """检查后端和 WebSocket 服务状态"""
             if not backend.is_running():
                 logger.warning("Backend stopped, restarting...")
                 backend.start()
+            if not ws_server.is_running():
+                logger.warning("WebSocket server stopped, restarting...")
+                ws_server.start()
 
         def _run_js(self, code):
             """执行 JavaScript"""
@@ -376,6 +452,7 @@ def main():
         def _quit(self):
             """真正退出"""
             backend.stop()
+            ws_server.stop()
             app.quit()
 
     # 创建并显示窗口
