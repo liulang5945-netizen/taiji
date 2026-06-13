@@ -6,7 +6,13 @@
  * 详见 docs/ENTRYPOINTS.md Phase 5。
  */
 .theme-light .app-wrapper {
-  background: #f7f9fc;
+  background: #eef2f7;
+}
+
+/* 亮色主题下全局禁用 backdrop-filter（玻璃效果在白底上导致白屏） */
+.theme-light *:not(.toast-item):not(.confirm-overlay):not(.global-drag-overlay) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 .theme-light .app-wrapper::before {
