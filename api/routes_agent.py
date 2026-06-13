@@ -9,11 +9,10 @@ Agent 核心功能 API 路由（精简版）
 """
 import json
 import logging
-import os
-
 from fastapi import APIRouter, HTTPException
 
-from taiji.core.utils import get_external_path
+from taiji.core.app_state import app_state
+from taiji.services.tool_service import list_tools, get_registry_schemas, execute_tool
 
 logger = logging.getLogger("ApiServer.Agent")
 router = APIRouter()
@@ -23,61 +22,8 @@ router = APIRouter()
 
 @router.get("/api/agent/tools")
 def list_agent_tools():
-    """列出已加载的 Agent 工具"""
-    try:
-        from taiji.agent_ext.tool_registry import registry
-
-        tools = []
-        seen = set()
-        for tool in registry.list_tools(enabled_only=True):
-            seen.add(tool.name)
-            tools.append({
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-                "source": tool.source,
-                "source_id": tool.source_id,
-                "category": tool.category,
-                "enabled": tool.enabled,
-            })
-
-        try:
-            from taiji.agent_ext.mcp_manager import mcp_manager
-            for tool in mcp_manager.get_all_mcp_tools():
-                name = tool.get("name") or tool.get("function", {}).get("name")
-                if not name or name in seen:
-                    continue
-                seen.add(name)
-                tools.append({
-                    "name": name,
-                    "description": tool.get("description") or tool.get("function", {}).get("description", ""),
-                    "parameters": tool.get("parameters") or tool.get("function", {}).get("parameters", {}),
-                    "source": "mcp",
-                    "source_id": tool.get("server_id") or tool.get("source_id", ""),
-                    "category": "MCP",
-                    "enabled": True,
-                })
-        except Exception as e:
-            logger.debug(f"MCP 工具同步失败: {e}")
-
-        plugins_dir = get_external_path("plugins")
-        if os.path.exists(plugins_dir):
-            for f in os.listdir(plugins_dir):
-                if f.endswith('.py') and not f.startswith('_'):
-                    name = f.replace('.py', '')
-                    if name not in seen:
-                        tools.append({
-                            "name": name,
-                            "description": "动态热挂载插件",
-                            "source": "plugin",
-                            "source_id": name,
-                            "category": "插件",
-                            "enabled": True,
-                        })
-        return {"status": "ok", "tools": tools, "count": len(tools)}
-    except Exception as e:
-        logger.error(f"获取 Agent 工具失败: {e}")
-        return {"status": "error", "message": str(e), "tools": []}
+    """列出已加载的 Agent 工具。"""
+    return list_tools()
 
 
 # ======================== ReAct 推理引擎 ========================
@@ -205,24 +151,15 @@ async def cancel_agent():
 def list_tool_registry():
     """列出工具注册表中所有已注册的工具（JSON Schema 格式）"""
     try:
-        from taiji.agent_ext.tool_registry import registry
-        schemas = registry.get_tool_schemas()
-        tools_info = []
-        for s in schemas:
-            func = s.get("function", {})
-            tools_info.append({
-                "name": func.get("name", ""),
-                "description": func.get("description", ""),
-                "parameters": func.get("parameters", {}),
-            })
-        return {"status": "ok", "tools": tools_info, "count": len(tools_info)}
+        schemas = get_registry_schemas()
+        return {"status": "ok", "tools": schemas, "count": len(schemas)}
     except Exception as e:
         logger.error(f"获取工具注册表失败: {e}")
         return {"status": "error", "message": str(e)}
 
 
 @router.post("/api/agent/tools/execute")
-async def execute_tool(req: dict):
+async def run_tool(req: dict):
     """直接执行一个注册的工具"""
     tool_name = req.get("tool", "").strip()
     tool_args = req.get("args", {})
@@ -230,8 +167,7 @@ async def execute_tool(req: dict):
         raise HTTPException(status_code=400, detail="工具名不能为空")
 
     try:
-        from taiji.agent_ext.tool_registry import registry
-        result = registry.execute(tool_name, tool_args)
+        result = execute_tool(tool_name, tool_args)
         return {"status": "ok", "result": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
