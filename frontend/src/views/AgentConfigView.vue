@@ -938,4 +938,25 @@ onUnmounted(() => {
     overflow: visible;
   }
 }
+/* ===== Agent工具网格 ===== */
+.tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(30,41,59,0.3);
+  border: 1px solid rgba(99,102,241,0.1);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.tool-card:hover { border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.06); transform: translateY(-1px); }
+.tool-icon { font-size: 1.3rem; flex-shrink: 0; color: var(--taiji-light); filter: drop-shadow(0 0 4px rgba(245,158,11,0.2)); }
+.tool-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tool-name { font-weight: 600; font-size: 0.84rem; color: var(--text); }
+.tool-desc { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
