@@ -49,14 +49,14 @@
     <div class="sidebar-footer">
       <div v-for="group in navGroups" :key="group.title" class="nav-group">
         <div class="section-label">{{ group.title }}</div>
-        <button v-for="item in group.items" :key="item.path"
+        <RouterLink v-for="item in group.items" :key="item.path"
           class="settings-btn" :class="{ active: isActiveRoute(item.path) }"
-          @click="navigateTo(item.path)">
+          :to="item.path">
           <span class="nav-icon-wrap">
             <component :is="item.icon" :size="14" class="nav-icon" />
           </span>
           <span class="nav-label">{{ item.label }}</span>
-        </button>
+        </RouterLink>
       </div>
     </div>
   </aside>
@@ -64,7 +64,7 @@
 
 <script setup>
 import { computed, inject } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
 import {
   Brain, Plus, MessageSquare, X,
   BookOpen, Zap, Cpu, Layout, Settings, Heart
@@ -87,12 +87,6 @@ const t = (key, params) => appStore.t(key, params)
 
 function isActiveRoute(path) {
   return route.path === path
-}
-
-function navigateTo(path) {
-  if (route.path !== path) {
-    router.push(path).catch(() => {})
-  }
 }
 
 const navGroups = computed(() => [
@@ -142,6 +136,8 @@ function onMemoryWarning(data) {
 <style scoped>
 .sidebar-header {
   padding: 18px 14px 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar-logo {
@@ -235,6 +231,10 @@ function onMemoryWarning(data) {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .runtime-issues {
@@ -323,12 +323,19 @@ function onMemoryWarning(data) {
 }
 
 .session-list {
+  min-height: 0;
+  overflow-y: auto;
   padding: 0 10px 12px;
 }
 
 .sidebar-footer {
+  min-height: 0;
+  max-height: min(44vh, 292px);
+  overflow-y: auto;
   gap: 8px;
-  padding-top: 10px;
+  padding: 10px 12px 14px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
 }
 
 .nav-group {
@@ -343,6 +350,20 @@ function onMemoryWarning(data) {
   box-shadow: 1px 0 0 rgba(15,23,42,0.04);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
+}
+
+:global(.sidebar) {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(64px, 1fr) auto;
+  overflow: hidden;
+}
+
+:global(.settings-btn) {
+  min-height: 36px;
+  flex-shrink: 0;
+  text-decoration: none;
 }
 
 :global(.theme-light) .sidebar::before {

@@ -223,7 +223,7 @@ import {
   TerminalSquare, Image as ImageIcon, RefreshCw, Play, Square, Trash2, Download
 } from 'lucide-vue-next'
 import { useRuntimeStore } from '@/stores/runtimeStore.js'
-import { API_BASE, authFetch } from '@/composables/useApi.js'
+import { API_BASE, authFetch } from '@/composables/apiClient.js'
 import { useSettings } from '@/composables/useSettings.js'
 
 const { saveSettingsToServer } = useSettings()

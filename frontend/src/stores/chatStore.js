@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed, nextTick } from 'vue'
-import { API_BASE, authFetch, setChatReceiving } from '@/composables/useApi.js'
+import { API_BASE, authFetch } from '@/composables/apiClient.js'
+import { setChatReceiving } from '@/composables/useApi.js'
 import { useRuntimeStore } from '@/stores/runtimeStore.js'
+
+let _msgIdCounter = 0
+function _nextMsgId() { return `msg_${Date.now()}_${++_msgIdCounter}` }
 
 export const useChatStore = defineStore('chat', () => {
   // === State ===
@@ -107,6 +111,18 @@ export const useChatStore = defineStore('chat', () => {
     chatInput.value = val
   }
 
+  function appendRuntimeMessage(role, content, extra = {}) {
+    messages.value.push({
+      id: _nextMsgId(),
+      role,
+      content,
+      timestamp: Date.now(),
+      ...extra,
+    })
+    const s = sessions.value.find(s => s.id === currentSessionId.value)
+    if (s) s.messages = [...messages.value]
+  }
+
   function getSystemPrompt() {
     return localStorage.getItem('taiji_system_prompt') || '你是态极，一个独立的AI生命体。你用自己的大脑思考，用工具探索世界。'
   }
@@ -133,6 +149,7 @@ export const useChatStore = defineStore('chat', () => {
     const promptInput = attachmentContext ? `${input}\n\n${attachmentContext}` : input
 
     messages.value.push({
+      id: _nextMsgId(),
       role: 'user',
       content: input,
       attachments: attachments.map(att => ({
@@ -179,9 +196,13 @@ export const useChatStore = defineStore('chat', () => {
 
     try {
       const history = []
-      for (let i = 1; i < messages.value.length; i += 2) {
-        if (messages.value[i]?.role === 'assistant') {
-          history.push([messages.value[i - 1]?.content || '', messages.value[i].content || ''])
+      let pendingUser = ''
+      for (const msg of messages.value.slice(0, -1)) {
+        if (msg.role === 'user') {
+          pendingUser = msg.content || ''
+        } else if (msg.role === 'assistant' && pendingUser) {
+          history.push([pendingUser, msg.content || ''])
+          pendingUser = ''
         }
       }
 
@@ -209,7 +230,7 @@ export const useChatStore = defineStore('chat', () => {
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
-      const aiMsg = { role: 'assistant', content: '', toolCalls: [] }
+      const aiMsg = { id: _nextMsgId(), role: 'assistant', content: '', toolCalls: [] }
       messages.value.push(aiMsg)
       let buffer = ''
 
@@ -319,7 +340,7 @@ export const useChatStore = defineStore('chat', () => {
         if (m && m.role === 'assistant') {
           m.content += `\n\n❌ 错误: ${err.message}`
         } else {
-          messages.value.push({ role: 'assistant', content: `❌ 错误: ${err.message}` })
+          messages.value.push({ id: _nextMsgId(), role: 'assistant', content: `❌ 错误: ${err.message}` })
         }
       }
     } finally {
@@ -356,7 +377,8 @@ export const useChatStore = defineStore('chat', () => {
     setChatReceiving(false)
   }
 
-  function regenerateMessage(idx) {
+  function regenerateMessage(msgId) {
+    const idx = messages.value.findIndex(m => m.id === msgId)
     if (idx > 0 && messages.value[idx - 1]?.role === 'user') {
       const userMsg = messages.value[idx - 1]
       const m = userMsg.content
@@ -386,6 +408,7 @@ export const useChatStore = defineStore('chat', () => {
     deleteSession,
     clearCurrentChat,
     setChatInput,
+    appendRuntimeMessage,
     sendMessage,
     stopGeneration,
     regenerateMessage,

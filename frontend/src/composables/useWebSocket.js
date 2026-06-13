@@ -19,27 +19,27 @@ export function useWebSocket() {
   let ws = null
   let reconnectTimer = null
   const listeners = new Map()
+  let manuallyClosed = false
 
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
+    manuallyClosed = false
 
     ws = new WebSocket(WS_URL)
 
     ws.onopen = () => {
       connected.value = true
       reconnectAttempt = 0
-      console.log('已连接到态极')
       clearReconnect()
     }
 
     ws.onclose = () => {
       connected.value = false
-      console.log('与态极断开连接')
-      scheduleReconnect()
+      if (!manuallyClosed) scheduleReconnect()
     }
 
     ws.onerror = (error) => {
-      console.error('WebSocket 错误:', error)
+      connected.value = false
     }
 
     ws.onmessage = (event) => {
@@ -48,12 +48,13 @@ export function useWebSocket() {
         lastMessage.value = data
         handleMessage(data)
       } catch (e) {
-        console.error('解析消息失败:', e)
+        // 忽略格式异常，保持客户端可用
       }
     }
   }
 
   function disconnect() {
+    manuallyClosed = true
     clearReconnect()
     if (ws) {
       ws.close()
@@ -62,7 +63,7 @@ export function useWebSocket() {
   }
 
   let reconnectAttempt = 0
-  const MAX_RECONNECT_ATTEMPTS = 10
+  const MAX_RECONNECT_ATTEMPTS = 6
 
   function scheduleReconnect() {
     clearReconnect()
@@ -70,10 +71,9 @@ export function useWebSocket() {
       console.warn('WebSocket 重连次数超限，停止重连')
       return
     }
-    const delay = Math.min(3000 * Math.pow(2, reconnectAttempt), 30000)
+    const delay = Math.min(5000 * Math.pow(1.6, reconnectAttempt), 45000)
     reconnectAttempt++
     reconnectTimer = setTimeout(() => {
-      console.log(`尝试重新连接... (第${reconnectAttempt}次)`)
       connect()
     }, delay)
   }
@@ -104,7 +104,7 @@ export function useWebSocket() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data))
     } else {
-      console.warn('未连接到态极')
+      connected.value = false
     }
   }
 

@@ -11,7 +11,7 @@
  * 普通模型下不触发任何态极相关内容。
  */
 import { ref, reactive, nextTick } from 'vue';
-import { API_BASE } from './useApi.js';
+import { API_BASE, authFetch } from './apiClient.js';
 
 // ===== 导出状态 =====
 
@@ -116,7 +116,7 @@ export function toggleDataset(filename) {
 
 export async function loadTrainDatasets() {
   try {
-    const res = await fetch(`${API_BASE}/api/train/files`);
+    const res = await authFetch(`${API_BASE}/api/train/files`);
     if (res.ok) {
       const data = await res.json();
       trainFiles.value = data.files || [];
@@ -126,14 +126,14 @@ export async function loadTrainDatasets() {
 
 export async function previewDataset(filename) {
   try {
-    const res = await fetch(`${API_BASE}/api/train/preview/${encodeURIComponent(filename)}`);
+    const res = await authFetch(`${API_BASE}/api/train/preview/${encodeURIComponent(filename)}`);
     if (res.ok) trainPreview.value = await res.json();
   } catch (e) { /* console.warn(e) */ }
 }
 
 export async function deleteTrainFile(filename) {
   try {
-    await fetch(`${API_BASE}/api/train/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    await authFetch(`${API_BASE}/api/train/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
     const idx = selectedDatasets.value.indexOf(filename);
     if (idx >= 0) selectedDatasets.value.splice(idx, 1);
     loadTrainDatasets();
@@ -146,7 +146,7 @@ export async function deleteSelectedDatasets(_toast) {
   let successCount = 0;
   for (const filename of [...selectedDatasets.value]) {
     try {
-      await fetch(`${API_BASE}/api/train/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      await authFetch(`${API_BASE}/api/train/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
       const idx = selectedDatasets.value.indexOf(filename);
       if (idx >= 0) selectedDatasets.value.splice(idx, 1);
       successCount++;
@@ -187,7 +187,7 @@ export async function startTraining(toast) {
   };
 
   try {
-    const res = await fetch(`${API_BASE}/api/train/stream`, {
+    const res = await authFetch(`${API_BASE}/api/train/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -301,7 +301,7 @@ export async function startTraining(toast) {
 
 export async function pauseTraining(toast) {
   try {
-    await fetch(`${API_BASE}/api/train/pause`, { method: 'POST' });
+    await authFetch(`${API_BASE}/api/train/pause`, { method: 'POST' });
     trainState.value = 'paused';
     toast('⏸ 训练已暂停', 'info');
   } catch (e) { toast(`❌ 暂停失败: ${e.message}`, 'error'); }
@@ -309,7 +309,7 @@ export async function pauseTraining(toast) {
 
 export async function resumeTraining(toast) {
   try {
-    await fetch(`${API_BASE}/api/train/resume`, { method: 'POST' });
+    await authFetch(`${API_BASE}/api/train/resume`, { method: 'POST' });
     trainState.value = 'running';
     toast('▶ 训练已恢复', 'info');
   } catch (e) { toast(`❌ 恢复失败: ${e.message}`, 'error'); }
@@ -324,7 +324,7 @@ export async function stopTraining(toast) {
     try { trainReader.cancel(); } catch (e) { }
     trainReader = null;
   }
-  try { await fetch(`${API_BASE}/api/train/stop`, { method: 'POST' }); } catch (e) { }
+  try { await authFetch(`${API_BASE}/api/train/stop`, { method: 'POST' }); } catch (e) { }
   trainState.value = 'idle';
   trainProgress.value = 0;
   toast('⏹ 训练已停止', 'info');
@@ -334,7 +334,7 @@ export async function stopTraining(toast) {
 
 export async function loadCheckpoints() {
   try {
-    const res = await fetch(`${API_BASE}/api/train/checkpoints`);
+    const res = await authFetch(`${API_BASE}/api/train/checkpoints`);
     if (res.ok) {
       const data = await res.json();
       pendingCheckpoints.value = data.checkpoints || [];
@@ -371,7 +371,7 @@ export async function resumeFromCheckpoint(toast, $confirm) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/train/resume_checkpoint`, {
+    const res = await authFetch(`${API_BASE}/api/train/resume_checkpoint`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -475,7 +475,7 @@ export async function cancelPublish() {
     publishAbortController = null;
   }
   // 通知后端重置发布状态
-  try { await fetch(`${API_BASE}/api/system/pub_reset`, { method: 'POST' }); } catch (e) { }
+  try { await authFetch(`${API_BASE}/api/system/pub_reset`, { method: 'POST' }); } catch (e) { }
   publishingState.value = 'idle';
   trainLog.value += '⏹ 发布已取消\n';
   autoScrollTrainLog();
@@ -492,7 +492,7 @@ async function publishStreamCommon(toast, onStartMsg) {
   publishAbortController = new AbortController();
 
   try {
-    const res = await fetch(`${API_BASE}/api/model/publish`, {
+    const res = await authFetch(`${API_BASE}/api/model/publish`, {
       method: 'POST',
       signal: publishAbortController.signal,
     });
@@ -602,7 +602,7 @@ export async function exportModelToGGUF(toast, $confirm) {
   trainLog.value = '';
 
   try {
-    const res = await fetch(`${API_BASE}/api/model/export_gguf`, {
+    const res = await authFetch(`${API_BASE}/api/model/export_gguf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quant_type: 'Q4_K_M' }),
@@ -658,7 +658,7 @@ export async function exportModelToGGUF(toast, $confirm) {
  */
 export async function detectTaijiModel() {
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/model/info`);
+    const res = await authFetch(`${API_BASE}/api/taiji/model/info`);
     if (res.ok) {
       const data = await res.json();
       if (data.status === 'active') {
@@ -685,7 +685,7 @@ export async function detectTaijiModel() {
  */
 export async function loadTaijiLifeStatus() {
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/life/status`);
+    const res = await authFetch(`${API_BASE}/api/taiji/life/status`);
     if (res.ok) {
       const data = await res.json();
       if (data.status === 'ok' && data.data) {
@@ -700,7 +700,7 @@ export async function loadTaijiLifeStatus() {
  */
 export async function loadTaijiTimeline(hours = 24) {
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/life/timeline?hours=${hours}`);
+    const res = await authFetch(`${API_BASE}/api/taiji/life/timeline?hours=${hours}`);
     if (res.ok) {
       const data = await res.json();
       if (data.status === 'ok') {
@@ -716,7 +716,7 @@ export async function loadTaijiTimeline(hours = 24) {
 export async function feedTaiji(toast) {
   taijiLifeLoading.value = true;
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/feed`, { method: 'POST' });
+    const res = await authFetch(`${API_BASE}/api/taiji/feed`, { method: 'POST' });
     if (res.ok) {
       const data = await res.json();
       toast(`🍚 喂养完成！喂食 ${data.items_fed} 条，生成 ${data.samples_generated} 条训练样本`, 'success');
@@ -734,7 +734,7 @@ export async function feedTaiji(toast) {
 export async function sleepTaiji(toast) {
   taijiLifeLoading.value = true;
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/sleep`, { method: 'POST' });
+    const res = await authFetch(`${API_BASE}/api/taiji/sleep`, { method: 'POST' });
     if (res.ok) {
       const data = await res.json();
       const phases = data.phases_completed?.length || 0;
@@ -754,7 +754,7 @@ export async function sleepTaiji(toast) {
 export async function playTaiji(toast) {
   taijiLifeLoading.value = true;
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/play`, { method: 'POST' });
+    const res = await authFetch(`${API_BASE}/api/taiji/play`, { method: 'POST' });
     if (res.ok) {
       const data = await res.json();
       const count = data.activities?.length || 0;
@@ -792,7 +792,7 @@ export async function startTaijiTraining(toast) {
   const body = { ...taijiTrainParams, dataset_files: [...selectedDatasets.value] };
 
   try {
-    const res = await fetch(`${API_BASE}/api/taiji/train`, {
+    const res = await authFetch(`${API_BASE}/api/taiji/train`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
