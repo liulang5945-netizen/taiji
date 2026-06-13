@@ -1,9 +1,9 @@
 /**
- * 态极 · 无极 —— 设计变量系统
- * Glassmorphism + Taiji Philosophy
+ * 态极 —— 设计变量系统
+ * Runtime workspace design system
  */
 
-/* ===== 太极玻璃设计系统 ===== */
+/* ===== 运行台设计系统 ===== */
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
@@ -30,7 +30,7 @@
   --info-light: rgba(6,182,212,0.08);
   --purple: #8b5cf6;
 
-  /* 玻璃拟态背景系统 */
+  /* 背景系统 */
   --bg: #0d1117;
   --bg-card: rgba(13,17,23,0.72);
   --bg-hover: rgba(30,41,59,0.5);
@@ -41,11 +41,11 @@
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
 
-  /* 边框 - 玻璃风 */
+  /* 边框 */
   --border: rgba(148,163,184,0.15);
   --border-muted: rgba(148,163,184,0.1);
 
-  /* 阴影 - 光晕感 */
+  /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 0 4px rgba(99,102,241,0.05);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 0 8px rgba(99,102,241,0.08);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.5), 0 0 12px rgba(99,102,241,0.1);
@@ -75,55 +75,54 @@
 
 /* ===== 亮色主题 ===== */
 .theme-light {
-  --taiji-light: #b45309;
-  --taiji-blue: #2f6f73;
-  --taiji-cyan: #0e7490;
-  --primary: #2f6f73;
-  --primary-hover: #245a5d;
-  --primary-gradient: linear-gradient(135deg, #2f6f73 0%, #3b82a0 100%);
+  --taiji-light: #d97706;
+  --taiji-blue: #2563eb;
+  --taiji-cyan: #0f766e;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-gradient: linear-gradient(135deg, #2563eb 0%, #0f766e 100%);
 
-  /* 背景 — 柔和的暖灰渐变代替纯白 */
-  --bg: #edf2f7;
-  --bg-card: rgba(255,255,255,0.92);
-  --bg-hover: rgba(226,232,240,0.8);
-  --bg-muted: rgba(241,245,249,0.95);
+  /* 背景 — 用灰调区分层次，避免纯白 */
+  --bg: #eef2f7;
+  --bg-card: #ffffff;
+  --bg-hover: #e2e8f0;
+  --bg-muted: #e2e8f0;
 
-  /* 文字 */
-  --text: #17212b;
+  /* 文字 — 深色保证可读性 */
+  --text: #1e293b;
   --text-secondary: #475569;
-  --text-muted: #6b7f8f;
+  --text-muted: #64748b;
 
-  /* 边框 — 稍深以增强层次感 */
-  --border: rgba(71,85,105,0.18);
-  --border-muted: rgba(71,85,105,0.1);
+  /* 边框 — 加深，让面板轮廓清晰 */
+  --border: rgba(15,23,42,0.15);
+  --border-muted: rgba(15,23,42,0.1);
 
-  /* 阴影 — 加大纵深 */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 0 6px rgba(99,102,241,0.04);
-  --shadow-md: 0 4px 14px rgba(0,0,0,0.08), 0 0 10px rgba(99,102,241,0.05);
-  --shadow-lg: 0 8px 28px rgba(0,0,0,0.1), 0 0 14px rgba(99,102,241,0.06);
-  --shadow-xl: 0 16px 52px rgba(0,0,0,0.12), 0 0 22px rgba(99,102,241,0.08);
-  --shadow-glow: 0 0 20px rgba(47,111,115,0.1), 0 0 40px rgba(47,111,115,0.05);
+  /* 阴影 — 加强纵深感 */
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.04);
+  --shadow-md: 0 4px 16px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.04);
+  --shadow-lg: 0 12px 32px rgba(15,23,42,0.1), 0 0 0 1px rgba(15,23,42,0.04);
+  --shadow-xl: 0 24px 56px rgba(15,23,42,0.12);
+  --shadow-glow: 0 0 0 3px rgba(37,99,235,0.15);
 
-  /* 玻璃面板 — 半透明白色加轻微雾面 */
-  --glass-bg: rgba(255,255,255,0.85);
-  --glass-border: rgba(71,85,105,0.14);
-  --glass-glow: rgba(47,111,115,0.08);
-  --glass-highlight: rgba(255,255,255,0.75);
+  /* 面板 — 带微灰底色，和页面背景拉开层次 */
+  --glass-bg: #ffffff;
+  --glass-border: rgba(15,23,42,0.12);
+  --glass-glow: rgba(37,99,235,0.1);
+  --glass-highlight: #f8fafc;
 
-  /* 功能色（亮色模式下略微加深以保证对比度） */
-  --primary-light: rgba(47,111,115,0.13);
-  --primary-subtle: rgba(47,111,115,0.09);
-  --success-light: rgba(16,185,129,0.13);
-  --warning-light: rgba(245,158,11,0.13);
-  --danger-light: rgba(239,68,68,0.13);
-  --info-light: rgba(6,182,212,0.13);
+  /* 功能色 */
+  --primary-light: rgba(37,99,235,0.1);
+  --primary-subtle: rgba(37,99,235,0.06);
+  --success-light: rgba(16,185,129,0.1);
+  --warning-light: rgba(245,158,11,0.1);
+  --danger-light: rgba(239,68,68,0.1);
+  --info-light: rgba(6,182,212,0.1);
 
-  /* 太极色调整 */
   --taiji-dark: #1e293b;
 }
 
 .theme-light .app-wrapper {
-  background: linear-gradient(135deg, #f7fafc 0%, #edf3f7 52%, #f8fafc 100%);
+  background: #f8fafc;
 }
 
 .theme-light .app-wrapper::before {

@@ -95,6 +95,21 @@
 }
 
 
+/* ===== 亮色主题覆盖 ===== */
+:global(.theme-light) .sidebar {
+  box-shadow: 1px 0 8px rgba(15,23,42,0.08);
+  border-right-color: rgba(15,23,42,0.12);
+}
+
+:global(.theme-light) .sidebar::before {
+  display: none;
+}
+
+:global(.theme-light) .main-content {
+  border-left-color: rgba(15,23,42,0.08);
+}
+
+
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .sidebar {
