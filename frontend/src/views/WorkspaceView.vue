@@ -105,8 +105,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, inject } from 'vue';
-import { useApi, API_BASE } from '../composables/useApi.js';
+import { ref, reactive, onMounted, onUnmounted, watch, inject } from 'vue';
+import { useApi } from '../composables/useApi.js';
+import { API_BASE, authFetch } from '../composables/apiClient.js';
 import { Laptop, RefreshCw, FilePlus, FolderPlus, Terminal, FolderOpen, Folder, FileCode, FileText, Image as ImageIcon, Database, Edit3, Edit2, Trash2 } from 'lucide-vue-next';
 import MonacoEditor from '../components/MonacoEditor.vue';
 import WebTerminal from '../components/WebTerminal.vue';
@@ -117,15 +118,32 @@ const $confirm = inject('$confirm');
 
 const workspacePath = ref('');
 const fileTree = ref([]);
-const expandedDirs = ref(new Set());
+const expandedDirs = reactive(new Set());
 const showTerminal = ref(true);
 const sidebarWidth = ref(240);
-const terminalHeight = ref(250);
+const terminalHeight = ref(300);
 const monacoEditor = ref(null);
 const webTerminal = ref(null);
 const folderPicker = ref(null);
 
 const contextMenu = ref({ visible: false, x: 0, y: 0, node: null });
+
+// 通用输入对话框
+const inputDialog = ref({ visible: false, title: '', value: '', placeholder: '', resolve: null });
+function showInputDialog(title, placeholder = '') {
+  return new Promise((resolve) => {
+    inputDialog.value = { visible: true, title, value: '', placeholder, resolve };
+  });
+}
+function confirmInputDialog() {
+  const val = inputDialog.value.value.trim();
+  inputDialog.value.visible = false;
+  if (inputDialog.value.resolve) inputDialog.value.resolve(val || null);
+}
+function cancelInputDialog() {
+  inputDialog.value.visible = false;
+  if (inputDialog.value.resolve) inputDialog.value.resolve(null);
+}
 
 // 路径切换对话框
 const showPathDialog = ref(false);
@@ -176,7 +194,7 @@ async function applyNewPath() {
   if (!path) { pathDialogError.value = '请输入路径'; return; }
   pathDialogError.value = '';
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/path`, {
+    const r = await authFetch(`${API_BASE}/api/workspace/path`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
@@ -187,7 +205,7 @@ async function applyNewPath() {
       showPathDialog.value = false;
       newPathInput.value = '';
       // 刷新目录树
-      expandedDirs.value = new Set();
+      expandedDirs.clear();
       loadTree();
       toast('✅ 项目路径已切换', 'success');
     } else {
@@ -201,7 +219,7 @@ async function applyNewPath() {
 // 加载工作台路径
 async function loadWorkspacePath() {
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/path`);
+    const r = await authFetch(`${API_BASE}/api/workspace/path`);
     if (r.ok) {
       const data = await r.json();
       workspacePath.value = data.path || '';
@@ -212,7 +230,7 @@ async function loadWorkspacePath() {
 // 加载目录树
 async function loadTree(dir = '') {
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/tree`);
+    const r = await authFetch(`${API_BASE}/api/workspace/tree`);
     if (r.ok) {
       const data = await r.json();
       fileTree.value = flattenTree(data.tree || [], 0);
@@ -226,7 +244,7 @@ function flattenTree(nodes, depth) {
   for (const node of nodes) {
     node.depth = depth;
     result.push(node);
-    if (node.type === 'directory' && expandedDirs.value.has(node.path) && node.children) {
+    if (node.type === 'directory' && expandedDirs.has(node.path) && node.children) {
       result = result.concat(flattenTree(node.children, depth + 1));
     }
   }
@@ -240,10 +258,10 @@ function refreshTree() {
 // 点击目录树节点
 function handleTreeClick(node) {
   if (node.type === 'directory') {
-    if (expandedDirs.value.has(node.path)) {
-      expandedDirs.value.delete(node.path);
+    if (expandedDirs.has(node.path)) {
+      expandedDirs.delete(node.path);
     } else {
-      expandedDirs.value.add(node.path);
+      expandedDirs.add(node.path);
     }
     // 重新展开树
     loadTree();
@@ -284,7 +302,7 @@ function openInEditor() {
 async function renameItem() {
   const node = contextMenu.value.node;
   if (!node) return;
-  const newName = prompt('新名称:', node.name);
+  const newName = await showInputDialog('新名称:', node.name);
   if (!newName || newName === node.name) return;
   // 简单实现：API 暂无 rename，提示用户
   toast('重命名功能开发中', 'info');
@@ -296,7 +314,7 @@ async function deleteItem() {
   const ok = await $confirm({ title: '删除确认', message: `确定删除 ${node.name}？`, type: 'danger' });
   if (!ok) return;
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/delete/${node.path}`, { method: 'DELETE' });
+    const r = await authFetch(`${API_BASE}/api/workspace/delete/${node.path}`, { method: 'DELETE' });
     if (r.ok) loadTree();
   } catch (e) {}
 }
@@ -305,7 +323,7 @@ async function createNewFile() {
   const name = await showInputDialog('文件名:');
   if (!name) return;
   try {
-    await fetch(`${API_BASE}/api/workspace/file`, {
+    await authFetch(`${API_BASE}/api/workspace/file`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, content: '' }),
@@ -316,10 +334,10 @@ async function createNewFile() {
 }
 
 async function createNewFolder() {
-  const name = prompt('文件夹名:');
+  const name = await showInputDialog('文件夹名:');
   if (!name) return;
   try {
-    await fetch(`${API_BASE}/api/workspace/file`, {
+    await authFetch(`${API_BASE}/api/workspace/file`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name + '/.gitkeep', content: '' }),
@@ -352,7 +370,6 @@ function startTerminalResize(e) {
 
 // 关闭右键菜单（带清理，防止内存泄漏）
 const _closeContextMenu = () => { contextMenu.value.visible = false; };
-document.addEventListener('click', _closeContextMenu);
 onUnmounted(() => {
   document.removeEventListener('click', _closeContextMenu);
 });
@@ -364,7 +381,7 @@ function quickSelectPath(path) {
 // 加载常用路径
 async function loadQuickPaths() {
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/quick_paths`);
+    const r = await authFetch(`${API_BASE}/api/workspace/quick_paths`);
     if (r.ok) {
       const data = await r.json();
       if (data.paths && data.paths.length) {
@@ -377,6 +394,7 @@ async function loadQuickPaths() {
 }
 
 onMounted(() => {
+  document.addEventListener('click', _closeContextMenu);
   loadWorkspacePath();
   loadTree();
   loadQuickPaths();
@@ -397,7 +415,7 @@ onMounted(() => {
 .btn-ws.active { background: var(--primary-light); color: var(--primary); border-color: rgba(91,122,138,0.2); }
 
 /* 主区域 */
-.ws-main { display: flex; flex: 1; overflow: hidden; }
+.ws-main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
 /* 侧边栏文件树 */
 .ws-sidebar { display: flex; flex-direction: column; background: var(--bg); border-right: 1px solid var(--border); position: relative; min-width: 150px; }
@@ -416,8 +434,8 @@ onMounted(() => {
 
 /* 编辑器+终端 */
 .ws-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-.ws-editor { flex: 1 1 60%; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-.ws-terminal { flex: 0 0 auto; border-top: 1px solid var(--border); position: relative; }
+.ws-editor { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ws-terminal { flex: 0 0 auto; height: 300px; border-top: 1px solid var(--border); position: relative; min-height: 150px; }
 .terminal-resize-handle { position: absolute; top: -4px; left: 0; right: 0; height: 8px; cursor: row-resize; z-index: 10; transition: background 0.15s ease; }
 .terminal-resize-handle:hover { background: var(--primary); }
 
@@ -451,15 +469,121 @@ onMounted(() => {
 .quick-paths-label { font-size: 12px; color: var(--text-muted); margin-right: 4px; white-space: nowrap; }
 .quick-path-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .quick-path-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
-</style>
- }
-.path-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
-.btn-path-change { margin-left: 4px; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* ===== 工作区 ===== */
+.workspace-sidebar {
+  width: clamp(300px, 26vw, 380px);
+  min-width: 260px;
+  background: rgba(13,17,23,0.7);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--glass-border);
+  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  z-index: 10;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+}
 
-/* 常用路径快捷按钮 */
-.quick-paths { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
-.quick-paths-label { font-size: 12px; color: var(--text-muted); margin-right: 4px; white-space: nowrap; }
-.quick-path-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
-.quick-path-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
+.workspace-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.workspace-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
+
+.workspace-actions { display: flex; gap: 5px; }
+
+.workspace-tree {
+  max-height: 30%;
+  min-height: 60px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.86rem;
+}
+
+.workspace-editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 100px; }
+
+.workspace-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  gap: 14px;
+}
+
+.ws-file-item {
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition);
+  color: var(--text-secondary);
+}
+
+.ws-file-item:hover {
+  background: rgba(99,102,241,0.08);
+  color: var(--text);
+}
+
+/* ===== 补丁列表 ===== */
+.patches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 3px 0;
+}
+
+.patch-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(30,41,59,0.3);
+  border: 1px solid rgba(99,102,241,0.1);
+  transition: var(--transition-fast);
+  font-size: 0.84rem;
+}
+
+.patch-item:hover {
+  background: rgba(99,102,241,0.06);
+  border-color: rgba(99,102,241,0.2);
+}
+
+.patch-module { font-weight: 600; color: var(--primary); white-space: nowrap; min-width: 130px; }
+.patch-path { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Consolas','Courier New',monospace; font-size: 0.8rem; }
+.patch-size { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+
+.patch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.patch-header .label { font-size: 0.88rem; color: var(--text-secondary); font-weight: 500; }
+
+.patch-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  background: rgba(99,102,241,0.15);
+  color: var(--primary);
+  border-radius: 11px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  margin-left: 8px;
+}
 </style>

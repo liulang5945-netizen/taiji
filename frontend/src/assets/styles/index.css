@@ -1,6 +1,7 @@
 /**
- * 态极 · 无极 —— 样式汇总入口
- * Glassmorphism + Taiji Philosophy
+ * 态极 —— 样式汇总入口
+ * =====================
+ * 加载顺序：tokens → reset → shell → components → overrides
  */
 
 /* 设计变量系统 */
@@ -12,11 +13,11 @@
 /* 基础样式 */
 @import './base.css';
 
-/* 布局系统 */
-@import './layout.css';
+/* Shell 布局（app-wrapper、sidebar、main-content、router-wrapper） */
+@import './shell.css';
 
-/* 保留旧样式作为过渡（逐步迁移中） */
+/* [DEPRECATED] 旧页面样式，逐步迁移到 shell.css 和组件 scoped CSS */
 @import '../app.css';
 
-/* 最后加载的定向覆盖 */
+/* [FROZEN] 主题覆盖层，不再新增规则 */
 @import './overrides.css';

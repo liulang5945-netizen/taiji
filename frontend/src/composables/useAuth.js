@@ -1,29 +1,24 @@
 /**
  * 认证管理 composable
  * 提供登录、登出、Token 管理、自动附加认证头等功能
+ *
+ * 认证状态（authEnabled、username）由 runtimeStore 统一管理，
+ * 此处只提供命令动作（login/logout/enable/disable）。
  */
-import { ref, computed, onMounted } from 'vue';
-import { API_BASE } from './useApi.js';
+import { ref, computed } from 'vue';
+import { API_BASE, authFetch } from './apiClient.js';
+import { useRuntimeStore } from '@/stores/runtimeStore.js';
 
 const token = ref(localStorage.getItem('jwt_token') || '');
-const authEnabled = ref(false);
-const username = ref('');
-const authLoaded = ref(false);
 
 export function useAuth() {
-  const isAuthenticated = computed(() => !authEnabled.value || !!token.value);
+  const runtimeStore = useRuntimeStore()
 
-  async function checkAuthStatus() {
-    try {
-      const r = await fetch(`${API_BASE}/api/auth/status`);
-      if (r.ok) {
-        const d = await r.json();
-        authEnabled.value = d.enabled || false;
-        username.value = d.username || '';
-      }
-    } catch (e) { /* ignore */ }
-    authLoaded.value = true;
-  }
+  // 从 runtimeStore 读取认证状态，不再自己轮询 /api/auth/status
+  const authEnabled = computed(() => runtimeStore.auth?.enabled ?? false)
+  const username = computed(() => runtimeStore.auth?.username ?? '')
+  const authLoaded = computed(() => !!runtimeStore.runtimeSnapshot)
+  const isAuthenticated = computed(() => !authEnabled.value || !!token.value);
 
   async function login(user, password) {
     const r = await fetch(`${API_BASE}/api/auth/login`, {
@@ -55,7 +50,7 @@ export function useAuth() {
   }
 
   async function enableAuth(user, password) {
-    const r = await fetch(`${API_BASE}/api/auth/enable`, {
+    const r = await authFetch(`${API_BASE}/api/auth/enable`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ username: user, password })
@@ -68,7 +63,7 @@ export function useAuth() {
   }
 
   async function disableAuth() {
-    const r = await fetch(`${API_BASE}/api/auth/disable`, {
+    const r = await authFetch(`${API_BASE}/api/auth/disable`, {
       method: 'POST',
       headers: getAuthHeaders()
     });
@@ -80,7 +75,7 @@ export function useAuth() {
   }
 
   async function changePassword(oldPwd, newPwd) {
-    const r = await fetch(`${API_BASE}/api/auth/change_password`, {
+    const r = await authFetch(`${API_BASE}/api/auth/change_password`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
@@ -97,9 +92,6 @@ export function useAuth() {
     return false;
   }
 
-  // 初始化时检查
-  checkAuthStatus();
-
   return {
     token,
     authEnabled,
@@ -113,6 +105,5 @@ export function useAuth() {
     disableAuth,
     changePassword,
     handleAuthError,
-    checkAuthStatus,
   };
 }

@@ -1,6 +1,14 @@
 """
-Taiji 启动入口（兼容 PyInstaller 打包）
-提供现代化 PyQt6 启动窗口 + 系统托盘 + 热更新机制
+[打包入口] PyInstaller 桌面客户端 — 进程内嵌入 FastAPI
+======================================================
+
+面向 PyInstaller 打包后的生产场景。功能：
+- 依赖自检与自动安装（约 30 个核心包）
+- 热更新系统（HotUpdateImporter，从 update_code/ 加载补丁）
+- PyQt6 桌面 GUI（QWebEngineView + 系统托盘）
+- 进程内 QThread 启动 uvicorn（不走子进程）
+
+开发环境请用 desktop/main.py。详见 docs/ENTRYPOINTS.md
 
 安全与架构改进：
 1. 镜像源配置移至 config.py 集中管理，支持环境变量覆盖
@@ -639,7 +647,9 @@ def _real_main():
         show_action.triggered.connect(window.showNormal)
 
         return_home_action = QAction("返回内置界面", window)
-        return_home_action.triggered.connect(lambda: window.load(QUrl(local_url)))
+        client_url = f"{local_url}/#/?taiji_client=desktop"
+
+        return_home_action.triggered.connect(lambda: window.load(QUrl(client_url)))
 
         clear_cache_action = QAction("清除界面缓存", window)
         def clear_web_cache():
@@ -702,7 +712,7 @@ def _real_main():
         )
         tray_icon.show()
 
-        window.load(QUrl(local_url))
+        window.load(QUrl(client_url))
         if splash:
             splash.finish(window)
         window.show()

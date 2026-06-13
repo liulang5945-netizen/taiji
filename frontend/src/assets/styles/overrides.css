@@ -1,4 +1,10 @@
-/* Targeted overrides loaded last. */
+/**
+ * [FROZEN] 主题覆盖层 — 不再新增规则
+ * =====================================
+ * 此文件仅包含亮色主题的定向覆盖。
+ * 新样式请写在对应组件的 scoped CSS 中，或 tokens.css 中。
+ * 详见 docs/ENTRYPOINTS.md Phase 5。
+ */
 .theme-light .app-wrapper {
   background: #f7f9fc;
 }
@@ -232,4 +238,8 @@
 
 .theme-light .terminal-status {
   border-top: 1px solid rgba(15,23,42,0.06);
+}
+
+.global-drag-overlay {
+  pointer-events: auto;
 }

@@ -45,10 +45,12 @@ export const useRuntimeStore = defineStore('runtime', () => {
   const tools = ref([])
   const toolsLoading = ref(false)
   const toolError = ref('')
+  const exceptions = ref([])
   const agentPrefs = ref({
     maxIterations: readNumber('taiji_agent_max_iterations', 10),
     temperature: readNumber('taiji_agent_temperature', 0.7),
   })
+  const runtimeSnapshot = ref(null)
 
   const connectionClass = computed(() => {
     if (health.value.state === 'connected') return 'connected'
@@ -230,6 +232,9 @@ export const useRuntimeStore = defineStore('runtime', () => {
 
   const issues = computed(() => {
     const list = []
+    for (const item of exceptions.value) {
+      list.push(item)
+    }
     if (health.value.state === 'error') {
       list.push({ level: 'danger', title: '运行时断开', message: health.value.message || '后端连接失败。' })
     }
@@ -261,6 +266,56 @@ export const useRuntimeStore = defineStore('runtime', () => {
     }
   }
 
+  function applyRuntimeStatus(data) {
+    runtimeSnapshot.value = data
+
+    if (data?.health) {
+      health.value = {
+        state: data.health.state || 'unknown',
+        message: data.health.message || '',
+        modelLoaded: !!data.health.model_loaded,
+        modelName: data.health.model_name || '',
+        isTaiji: !!data.health.is_taiji,
+        switch: data.health.switch || {},
+        download: data.health.download || {},
+        checkedAt: data.health.checked_at || data.timestamp || Date.now(),
+      }
+    }
+
+    if (data?.memory) {
+      memory.value = data.memory
+    }
+
+    if (data?.auth) {
+      auth.value = {
+        ...auth.value,
+        enabled: !!data.auth.enabled,
+        authenticated: !!data.auth.authenticated,
+        tokenValid: !!data.auth.token_valid,
+        username: data.auth.username || '',
+        hasPassword: !!data.auth.has_password,
+        error: data.auth.status === 'error' ? (data.auth.message || '认证状态不可用') : '',
+      }
+    }
+
+    if (data?.life) {
+      life.value = data.life
+    }
+
+    if (data?.tools) {
+      tools.value = data.tools.tools || []
+      toolError.value = data.tools.error || (data.tools.status === 'error' ? data.tools.message || '工具状态不可用' : '')
+    }
+
+    return data
+  }
+
+  async function refreshRuntime() {
+    const resp = await authFetch(`${API_BASE}/api/runtime/status`)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    return applyRuntimeStatus(await resp.json())
+  }
+
   function reportAuthExpired(message = 'JWT token 缺失或已过期，请重新登录') {
     localStorage.removeItem('jwt_token')
     auth.value.authenticated = false
@@ -278,24 +333,37 @@ export const useRuntimeStore = defineStore('runtime', () => {
     }
   }
 
+  function addException(level, title, detail = {}, recovery = {}) {
+    const message = [
+      detail.message || '',
+      recovery.impact ? `影响：${recovery.impact}` : '',
+      recovery.recovery ? `恢复：${recovery.recovery}` : '',
+    ].filter(Boolean).join(' · ')
+    exceptions.value.unshift({
+      level: level === 'error' ? 'danger' : level,
+      title,
+      message: message || String(detail.technical || title),
+      createdAt: Date.now(),
+    })
+    exceptions.value = exceptions.value.slice(0, 5)
+  }
+
+  function clearException(title) {
+    exceptions.value = exceptions.value.filter(item => item.title !== title)
+  }
+
   async function refreshMemory() {
     try {
-      const resp = await fetch(`${API_BASE}/api/system/memory`)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      const data = await resp.json()
-      if (data.status === 'ok') memory.value = data
+      const data = await refreshRuntime()
+      return data.memory || null
     } catch (_) {}
+    return null
   }
 
   async function refreshAuth() {
     try {
-      const resp = await fetch(`${API_BASE}/api/auth/status`)
-      if (!resp.ok) return
-      const data = await resp.json()
-      auth.value.enabled = !!data.enabled
-      auth.value.username = data.username || ''
-      auth.value.authenticated = !data.enabled || !!localStorage.getItem('jwt_token')
-      auth.value.error = ''
+      const data = await refreshRuntime()
+      return data.auth || null
     } catch (err) {
       auth.value.error = err.message || '认证状态不可用'
     }
@@ -303,23 +371,18 @@ export const useRuntimeStore = defineStore('runtime', () => {
 
   async function refreshLife() {
     try {
-      const resp = await fetch(`${API_BASE}/api/life/status`)
-      if (resp.ok) life.value = await resp.json()
+      const data = await refreshRuntime()
+      return data.life || null
     } catch (_) {}
+    return null
   }
 
   async function refreshTools() {
     toolsLoading.value = true
     toolError.value = ''
     try {
-      const resp = await authFetch(`${API_BASE}/api/agent/tools`)
-      if (resp.status === 401) {
-        reportAuthExpired()
-        throw new Error('认证已过期，请重新登录')
-      }
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      const data = await resp.json()
-      tools.value = data.tools || []
+      const data = await refreshRuntime()
+      return data.tools || null
     } catch (err) {
       toolError.value = err.message || '工具状态不可用'
     } finally {
@@ -328,12 +391,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
   }
 
   async function refreshAll() {
-    await Promise.allSettled([
-      refreshMemory(),
-      refreshAuth(),
-      refreshLife(),
-      refreshTools(),
-    ])
+    return refreshRuntime()
   }
 
   function setAgentPrefs(prefs) {
@@ -356,7 +414,9 @@ export const useRuntimeStore = defineStore('runtime', () => {
     tools,
     toolsLoading,
     toolError,
+    exceptions,
     agentPrefs,
+    runtimeSnapshot,
     connectionClass,
     connectionStatus,
     memoryLevel,
@@ -372,6 +432,10 @@ export const useRuntimeStore = defineStore('runtime', () => {
     syncHealth,
     syncTerminal,
     reportAuthExpired,
+    addException,
+    clearException,
+    applyRuntimeStatus,
+    refreshRuntime,
     refreshMemory,
     refreshAuth,
     refreshLife,

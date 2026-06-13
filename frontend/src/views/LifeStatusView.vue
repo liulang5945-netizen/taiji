@@ -78,12 +78,12 @@
 
       <!-- 生命状态 -->
       <div class="status-grid">
-        <div class="status-card">
+          <div class="status-card">
           <div class="status-icon">💪</div>
           <div class="status-info">
             <span class="status-label">身体状态</span>
-            <span class="status-value" :class="{ healthy: taijiStatus?.body_status?.healthy }">
-              {{ taijiStatus?.body_status?.healthy ? '健康' : '需要关注' }}
+            <span class="status-value" :class="{ healthy: taijiStatus?.body?.healthy }">
+              {{ taijiStatus?.body?.healthy ? '健康' : '需要关注' }}
             </span>
           </div>
         </div>
@@ -91,8 +91,8 @@
           <div class="status-icon">🦾</div>
           <div class="status-info">
             <span class="status-label">行动能力</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body_status?.limbs_available }">
-              {{ taijiStatus?.body_status?.limbs_available ? '可用' : '不可用' }}
+            <span class="status-value" :class="{ available: taijiStatus?.body?.limbs_available }">
+              {{ taijiStatus?.body?.limbs_available ? '可用' : '不可用' }}
             </span>
           </div>
         </div>
@@ -100,8 +100,8 @@
           <div class="status-icon">⚡</div>
           <div class="status-info">
             <span class="status-label">代谢系统</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body_status?.metabolism_available }">
-              {{ taijiStatus?.body_status?.metabolism_available ? '正常' : '异常' }}
+            <span class="status-value" :class="{ available: taijiStatus?.body?.metabolism_available }">
+              {{ taijiStatus?.body?.metabolism_available ? '正常' : '异常' }}
             </span>
           </div>
         </div>
@@ -109,8 +109,8 @@
           <div class="status-icon">👁️</div>
           <div class="status-info">
             <span class="status-label">感知能力</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body_status?.senses_available }">
-              {{ taijiStatus?.body_status?.senses_available ? '灵敏' : '迟钝' }}
+            <span class="status-value" :class="{ available: taijiStatus?.body?.senses_available }">
+              {{ taijiStatus?.body?.senses_available ? '灵敏' : '迟钝' }}
             </span>
           </div>
         </div>

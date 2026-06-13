@@ -140,4 +140,98 @@ loadKBStats(); loadKBFiles();
   color: var(--text);
   margin: 0;
 }
+/* ===== KB 统计卡片 ===== */
+.kb-stats-row { display: flex; gap: 14px; flex-wrap: wrap; }
+
+.kb-stat-card {
+  flex: 1;
+  min-width: 110px;
+  padding: 18px;
+  background: rgba(99,102,241,0.06);
+  border: 1px solid rgba(99,102,241,0.12);
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition: var(--transition);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.kb-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(99,102,241,0.2);
+}
+
+.kb-stat-num {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--taiji-light);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(245,158,11,0.2);
+}
+
+.kb-stat-label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ===== KB 搜索 ===== */
+.kb-search-row { display: flex; gap: 10px; }
+.kb-search-hint { padding: 14px; }
+
+.kb-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.kb-result-item {
+  padding: 12px 14px;
+  background: rgba(30,41,59,0.3);
+  border: 1px solid rgba(99,102,241,0.1);
+  border-radius: var(--radius-sm);
+  transition: var(--transition-fast);
+}
+
+.kb-result-item:hover {
+  border-color: rgba(99,102,241,0.2);
+  background: rgba(30,41,59,0.5);
+}
+
+.kb-result-text { font-size: 0.88rem; color: var(--text); margin: 0 0 6px; line-height: 1.6; }
+.kb-result-score { font-size: 0.75rem; color: var(--text-muted); }
+
+/* ===== KB文件列表 ===== */
+.kb-files-list { display: flex; flex-direction: column; gap: 5px; }
+
+.kb-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(30,41,59,0.3);
+  border: 1px solid rgba(99,102,241,0.1);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  transition: var(--transition-fast);
+}
+
+.kb-file-item:hover { border-color: rgba(99,102,241,0.2); background: rgba(30,41,59,0.4); }
+
+.delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+  color: var(--text-muted);
+}
+
+.delete-btn:hover { background: rgba(239,68,68,0.1); color: var(--danger); }
 </style>

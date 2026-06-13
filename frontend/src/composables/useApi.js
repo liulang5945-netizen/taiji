@@ -25,6 +25,7 @@ const modelLoaded = ref(false);
 let healthCheckTimer = null;
 let retryTimer = null;
 let consecutiveFailures = 0;
+let lastHealthyAt = 0;
 let isChatReceiving = false;
 
 /**
@@ -67,50 +68,63 @@ export function useApi() {
   async function checkHealth() {
     try {
       const controller = new AbortController();
-      const timeout = 15000;
+      const timeout = 20000;
       const timeoutId = setTimeout(() => controller.abort(), timeout);
-      const resp = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+      const resp = await authFetch(`${API_BASE}/api/runtime/status`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!resp.ok) {
-        syncAppState('error', `后端返回错误 (HTTP ${resp.status})`);
+        handleHealthFailure(`后端返回错误 (HTTP ${resp.status})`);
         return false;
       }
 
       const ctype = resp.headers.get('content-type') || '';
       if (!ctype.includes('application/json')) {
-        syncAppState('error', '后端返回了非JSON响应，可能正在启动中...');
+        handleHealthFailure('本地服务正在启动，暂时还没有返回运行状态。');
         return false;
       }
 
       const data = await resp.json();
+      runtimeStore.applyRuntimeStatus(data);
+      const health = data.health || {};
       consecutiveFailures = 0;
-      if (data.status === 'ok') {
-        modelLoaded.value = !!data.model_loaded;
-        syncAppState('connected');
+      if (health.state === 'connected') {
+        lastHealthyAt = Date.now();
+        modelLoaded.value = !!health.model_loaded;
+        syncAppState('connected', health.message || '');
         downloadProgress.value = null;
         retryCountdown.value = 0;
         taijiAvailable.value = true;
         clearRetryTimer();
         return true;
-      } else if (data.status === 'downloading') {
+      } else if (health.state === 'downloading') {
         modelLoaded.value = false;
-        downloadProgress.value = data;
-        syncAppState('downloading', data.message || '模型正在下载...');
+        downloadProgress.value = health.download || health;
+        syncAppState('downloading', health.message || '模型正在下载...');
         return false;
-      } else if (data.status === 'loading') {
+      } else if (health.state === 'loading') {
         consecutiveFailures = 0;
         if (connectionState.value !== 'connected') {
-          syncAppState('loading', data.message || '模型正在加载中...');
+          syncAppState('loading', health.message || '模型正在加载中...');
         }
         return false;
       } else {
-        syncAppState('error', data.message || '后端报告错误');
+        handleHealthFailure(health.message || '后端报告错误');
         return false;
       }
     } catch (err) {
+      const recentlyHealthy = lastHealthyAt && Date.now() - lastHealthyAt < 45000;
       if (connectionState.value === 'loading') {
         consecutiveFailures = 0;
+        return false;
+      }
+      if (recentlyHealthy) {
+        consecutiveFailures = 0;
+        runtimeStore.syncHealth(
+          connectionState.value === 'error' ? 'connecting' : connectionState.value,
+          '本地运行时短暂无响应，正在保持连接并自动重试...',
+          modelLoaded.value
+        );
         return false;
       }
       if (connectionState.value === 'unknown' || connectionState.value === 'connecting') {
@@ -120,11 +134,24 @@ export function useApi() {
       }
       if (isChatReceiving) return false;
       consecutiveFailures++;
-      if (consecutiveFailures >= 5) {
-        syncAppState('error', err.message);
+      if (consecutiveFailures >= 8) {
+        syncAppState('error', '本地运行时暂时不可用，正在等待服务恢复...');
       }
       return false;
     }
+  }
+
+  function handleHealthFailure(message) {
+    const recentlyHealthy = lastHealthyAt && Date.now() - lastHealthyAt < 45000;
+    if (recentlyHealthy || consecutiveFailures < 7) {
+      consecutiveFailures++;
+      runtimeStore.syncHealth('connecting', message || '正在等待本地运行时恢复...', modelLoaded.value);
+      connectionState.value = 'connecting';
+      connectionErrorMsg.value = message || '';
+      appStore.setConnectionState('connecting', connectionErrorMsg.value, modelLoaded.value);
+      return;
+    }
+    syncAppState('error', message || '本地运行时暂时不可用');
   }
 
   function startHealthCheck() {
@@ -140,7 +167,7 @@ export function useApi() {
           healthCheckTimer = setInterval(() => {
             checkHealth().catch(() => {});
             runtimeStore.refreshAll().catch(() => {});
-          }, 10000);
+          }, 15000);
         }
       } catch (e) {
         console.warn('[healthCheck] 健康检查异常:', e);
