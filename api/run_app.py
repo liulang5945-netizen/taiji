@@ -23,6 +23,10 @@ import traceback
 import threading
 import subprocess
 
+# 修复 PyQt6 QWebEngine GPU 渲染导致的 segfault（必须在导入 PyQt6 之前设置）
+os.environ.setdefault('QTWEBENGINE_CHROMIUM_FLAGS', '--disable-gpu')
+os.environ.setdefault('QT_OPENGL', 'software')
+
 # ==========================================
 # 将项目根目录加入 sys.path
 # ==========================================
