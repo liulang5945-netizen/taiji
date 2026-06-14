@@ -9,8 +9,28 @@
   background: #eef2f7;
 }
 
-/* 亮色主题下全局禁用 backdrop-filter（玻璃效果在白底上导致白屏） */
-.theme-light *:not(.toast-item):not(.confirm-overlay):not(.global-drag-overlay) {
+/* 亮色主题下禁用 backdrop-filter（玻璃效果在白底上导致白屏） */
+.theme-light .sidebar,
+.theme-light .main-content,
+.theme-light .chat-header,
+.theme-light .input-container,
+.theme-light .composer-area,
+.theme-light .panel-section,
+.theme-light .panel-header,
+.theme-light .tools-grid .tool-card,
+.theme-light .dedicated-view,
+.theme-light .needs-section,
+.theme-light .status-card,
+.theme-light .ws-toolbar,
+.theme-light .ws-sidebar,
+.theme-light .monaco-wrapper,
+.theme-light .terminal-wrapper,
+.theme-light .train-dashboard,
+.theme-light .train-log-panel,
+.theme-light .hardware-diag-banner,
+.theme-light .train-metric-card,
+.theme-light .switch-status-bar,
+.theme-light .global-switch-bar {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
