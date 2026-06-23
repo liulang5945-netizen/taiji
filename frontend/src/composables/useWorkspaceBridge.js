@@ -16,7 +16,7 @@
  *   bridge.sendTerminalOutputToChat('output text')
  */
 import { ref } from 'vue'
-import { API_BASE } from './useApi.js'
+import { API_BASE, authFetch } from './apiClient.js'
 
 // 全局状态（跨组件共享）
 const pendingFileOpen = ref(null)
@@ -81,7 +81,7 @@ export function useWorkspaceBridge() {
 
     // 尝试自动解释错误
     try {
-      const r = await fetch(`${API_BASE}/api/chat/stream`, {
+      const r = await authFetch(`${API_BASE}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,7 +133,7 @@ export function useWorkspaceBridge() {
    */
   async function agentCreateFile(fileName, content) {
     try {
-      const r = await fetch(`${API_BASE}/api/workspace/file`, {
+      const r = await authFetch(`${API_BASE}/api/workspace/file`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: fileName, content }),

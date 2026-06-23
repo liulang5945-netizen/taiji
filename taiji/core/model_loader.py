@@ -7,12 +7,12 @@
 import json
 import logging
 import os
-import sys
 import threading
 
 from taiji.core.config import TrainingConfig
 from taiji.core.app_state import app_state
 from taiji.core.utils import get_external_path
+from taiji.services.settings_service import load_settings, save_settings
 
 logger = logging.getLogger("ModelLoader")
 
@@ -36,16 +36,15 @@ async def _async_load_model():
         config.cache_dir = get_external_path("model_cache")
         config.resume_from_checkpoint = get_external_path("final_checkpoint.pt")
 
-        settings_path = get_external_path("app_settings.json")
-        settings = _load_settings(settings_path)
+        settings = load_settings()
         _apply_settings_to_config(config, settings)
 
         # 安装后首次自动下载模型
         if _should_auto_download(settings):
-            _perform_auto_download(config, settings, settings_path)
+            _perform_auto_download(config, settings)
 
         # 判断模型类型并加载
-        _detect_and_load_model(config, settings_path)
+        _detect_and_load_model(config)
 
         # 自动构建 RAG 索引
         _build_rag_index()
@@ -57,14 +56,6 @@ async def _async_load_model():
         logger.error(error_msg)
         app_state.mark_startup_failed(error_msg)
 
-
-def _load_settings(settings_path: str) -> dict:
-    """加载应用设置"""
-    settings = {}
-    if os.path.exists(settings_path):
-        with open(settings_path, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-    return settings
 
 
 def _apply_settings_to_config(config: TrainingConfig, settings: dict):
@@ -93,7 +84,7 @@ def _should_auto_download(settings: dict) -> bool:
             and not settings.get("gguf_path"))
 
 
-def _perform_auto_download(config: TrainingConfig, settings: dict, settings_path: str):
+def _perform_auto_download(config: TrainingConfig, settings: dict):
     """执行首次自动下载"""
     try:
         model_key = settings["gguf_model_key"]
@@ -142,8 +133,7 @@ def _perform_auto_download(config: TrainingConfig, settings: dict, settings_path
             settings["n_ctx"] = 2048
             settings["gguf_download_pending"] = False
             settings["gguf_dir"] = save_dir
-            with open(settings_path, "w", encoding="utf-8") as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
+            save_settings(settings)
             logger.info(f"✅ 安装后自动下载完成: {file_path}")
         else:
             logger.warning("⚠️ 自动下载未获得有效文件，将以无模型状态启动")
@@ -166,7 +156,7 @@ def _find_model_info_fallback(model_key: str, quant: str) -> dict:
     return None
 
 
-def _detect_and_load_model(config: TrainingConfig, settings_path: str):
+def _detect_and_load_model(config: TrainingConfig):
     """检测模型类型并加载"""
     from taiji.model_ext.gguf_engine import is_gguf_model, find_gguf_file
     from taiji.model_ext.model_setup import load_gguf_model, download_and_load_model
@@ -184,7 +174,7 @@ def _detect_and_load_model(config: TrainingConfig, settings_path: str):
     if model_path_is_taiji_dir and config.model_type != "self":
         logger.info(f"🧬 自动检测到态极 ModelSelf 模型目录，自动切换为态极模式")
         config.model_type = "self"
-        _auto_fix_settings(settings_path, "self", "")
+        _auto_fix_settings("self", "")
 
     if config.model_name and os.path.isdir(config.model_name) and not model_path_is_hf_dir:
         gguf_in_model_dir = find_gguf_file(config.model_name, recursive=False)
@@ -193,7 +183,7 @@ def _detect_and_load_model(config: TrainingConfig, settings_path: str):
             config.gguf_path = gguf_in_model_dir
             config.model_type = "gguf"
             model_path_is_gguf_dir = True
-            _auto_fix_settings(settings_path, "gguf", gguf_in_model_dir)
+            _auto_fix_settings("gguf", gguf_in_model_dir)
 
     gguf_path_valid = config.gguf_path and os.path.exists(config.gguf_path) and is_gguf_model(config.gguf_path)
 
@@ -203,7 +193,7 @@ def _detect_and_load_model(config: TrainingConfig, settings_path: str):
             logger.warning(f"⚠️ model_type 被设为 gguf，但路径是 HF 模型目录，自动降级为 huggingface")
             config.model_type = "huggingface"
             config.gguf_path = ""
-            _auto_fix_settings(settings_path, "huggingface", "")
+            _auto_fix_settings("huggingface", "")
         else:
             logger.warning(f"⚠️ model_type=gguf 但 gguf_path 无效，且无可用 HF 模型，无模型启动")
             app_state.mark_started()
@@ -269,20 +259,17 @@ def _check_taiji_dir(model_path: str) -> bool:
         return False
 
 
-def _auto_fix_settings(settings_path: str, model_type: str, gguf_path: str):
-    """自动修复设置文件"""
+def _auto_fix_settings(model_type: str, gguf_path: str):
+    """Update persisted model settings after auto-detection."""
     try:
-        if os.path.exists(settings_path):
-            with open(settings_path, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            saved["model_type"] = model_type
-            if gguf_path:
-                saved["gguf_path"] = gguf_path
-            else:
-                saved.pop("gguf_path", None)
-            with open(settings_path, "w", encoding="utf-8") as f:
-                json.dump(saved, f, ensure_ascii=False, indent=2)
-            logger.info("✅ 已自动修复 app_settings.json")
+        saved = load_settings()
+        saved["model_type"] = model_type
+        if gguf_path:
+            saved["gguf_path"] = gguf_path
+        else:
+            saved.pop("gguf_path", None)
+        save_settings(saved)
+        logger.info("Auto-updated persisted model settings")
     except Exception:
         pass
 
@@ -314,6 +301,13 @@ def _load_hf_model(config: TrainingConfig):
     if not getattr(config, "model_name", None) or config.model_name.lower() in ["none", ""]:
         logger.info("未检测到有效模型配置，将以【无模型状态】启动后台...")
         app_state.mark_started()
+        return
+
+    # 检查是否为 LoRA 适配器目录
+    adapter_config_path = os.path.join(config.model_name, "adapter_config.json")
+    if os.path.exists(adapter_config_path):
+        logger.info(f"检测到 LoRA 适配器目录: {config.model_name}")
+        _load_lora_adapter(config)
         return
 
     _hw_diag = config.auto_configure_for_hardware()
@@ -348,6 +342,56 @@ def _load_hf_model(config: TrainingConfig):
     app_state.update_model(model, tokenizer, trainer, config.model_name)
 
 
+def _load_lora_adapter(config: TrainingConfig):
+    """加载 LoRA 适配器模型"""
+    import json as _json
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from peft import PeftModel
+
+    adapter_dir = config.model_name
+    adapter_config_path = os.path.join(adapter_dir, "adapter_config.json")
+
+    # 读取适配器配置，获取基底模型
+    with open(adapter_config_path, "r") as f:
+        adapter_config = _json.load(f)
+    base_model_name = adapter_config.get("base_model_name_or_path", "")
+    if not base_model_name:
+        logger.error("LoRA 适配器配置中未找到 base_model_name_or_path")
+        app_state.mark_started()
+        return
+
+    device = config.resolve_device()
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+
+    logger.info(f"加载 LoRA 适配器:")
+    logger.info(f"  基底模型: {base_model_name}")
+    logger.info(f"  适配器: {adapter_dir}")
+    logger.info(f"  设备: {device}")
+
+    # 加载基底模型
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_model_name,
+        torch_dtype=dtype,
+        trust_remote_code=True,
+    )
+    base_model = base_model.to(device)
+
+    # 加载 LoRA 适配器
+    model = PeftModel.from_pretrained(base_model, adapter_dir)
+    model.eval()
+
+    # 加载 tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(adapter_dir, trust_remote_code=True)
+
+    logger.info(f"LoRA 模型加载成功！参数量: {model.num_parameters() / 1e6:.0f}M")
+
+    # 创建推理引擎
+    from taiji.model_ext.trainer import BaseInferenceEngine
+    trainer = BaseInferenceEngine(model, config, device)
+    app_state.update_model(model, tokenizer, trainer, adapter_dir)
+
+
 def _load_self_model(config: TrainingConfig):
     """加载 ModelSelf 原生模型 + 态极多模态引擎"""
     try:
@@ -370,17 +414,22 @@ def _load_self_model(config: TrainingConfig):
 
     model, tokenizer = load_model(model_path, device=device)
 
-    # 注册 Taiji 的工具到分词器
+    # 注册工具到模型（工具头需要知道工具数量）
     tool_names = [t.name for t in registry.list_tools(enabled_only=True)]
-    for name in tool_names:
-        tokenizer.register_tool(name)
-    model.set_num_tools(len(tokenizer._tool_name_to_id))
+    if hasattr(tokenizer, 'register_tool'):
+        # SentencePiece tokenizer 支持工具名注册
+        for name in tool_names:
+            tokenizer.register_tool(name)
+        model.set_num_tools(len(tokenizer._tool_name_to_id))
+    else:
+        # BPE tokenizer：直接设置工具数量
+        model.set_num_tools(len(tool_names))
     logger.info(f"已注册 {len(tool_names)} 个工具到模型")
 
     trainer = NativeInferenceEngine(model, tokenizer, device)
     app_state.update_model(model, tokenizer, trainer, model_path)
 
-    # 将同一个 trainer 实例也注册为态极引擎（避免创建两个独立实例共享 model）
+    # 注册态极引擎（统一推理入口）
     try:
         app_state.set_taiji_engine(trainer)
         logger.info("态极推理引擎已注册到 app_state")

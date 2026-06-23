@@ -85,7 +85,7 @@
 import { ref, inject } from 'vue';
 import { Settings as SettingsIcon, Palette, MessageSquareText, RefreshCw, Image as ImageIcon } from 'lucide-vue-next';
 import { useAppStore } from '../stores/appStore.js';
-import { API_BASE } from '../composables/useApi.js';
+import { API_BASE, authFetch } from '../composables/apiClient.js';
 
 const toast = inject('toast');
 const appStore = useAppStore();
@@ -111,7 +111,7 @@ const onBgImageSelect = (e) => {
 
 const saveSettings = async () => {
   localStorage.setItem('taiji_system_prompt', systemPrompt.value);
-  await fetch(`${API_BASE}/api/settings`, {
+  await authFetch(`${API_BASE}/api/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -126,7 +126,7 @@ const saveSettings = async () => {
 const checkUpdate = async () => {
   updateChecking.value = true; updateMsg.value = '';
   try {
-    const r = await fetch(`${API_BASE}/api/system/check_update`, { method: 'POST' });
+    const r = await authFetch(`${API_BASE}/api/system/check_update`, { method: 'POST' });
     const d = await r.json();
     updateAvailable.value = d.has_update;
     updateMsg.value = d.has_update ? `${t('update_available')} v${d.version}` : (d.message || '已是最新版本');
@@ -135,13 +135,13 @@ const checkUpdate = async () => {
 };
 
 const applyUpdate = async () => {
-  try { await fetch(`${API_BASE}/api/system/apply_update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); } catch (e) {}
+  try { await authFetch(`${API_BASE}/api/system/apply_update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); } catch (e) {}
 };
 
 // Load app version
 (async () => {
   try {
-    const r = await fetch(`${API_BASE}/api/system/version`);
+    const r = await authFetch(`${API_BASE}/api/system/version`);
     if (r.ok) {
       const d = await r.json();
       if (d.version) appVersion.value = d.version;

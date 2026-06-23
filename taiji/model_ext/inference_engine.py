@@ -87,8 +87,16 @@ class BaseInferenceEngine:
             )
         # 仅解码新生成的 token，避免重复输出 prompt 部分
         new_tokens = out[0][prompt_len:]
-        text = tokenizer.decode(new_tokens, skip_special_tokens=True)
-        return text
+        # 调试：记录原始 token 以便排查空输出问题
+        if len(new_tokens) == 0:
+            logger.warning(f"⚠️ 模型生成了 0 个新 token（prompt_len={prompt_len}, output_len={out.shape[1]}）")
+        else:
+            raw_text = tokenizer.decode(new_tokens, skip_special_tokens=False)
+            text = tokenizer.decode(new_tokens, skip_special_tokens=True)
+            if not text.strip():
+                logger.warning(f"⚠️ 模型生成了 {len(new_tokens)} 个 token 但解码为空。原始 token IDs: {new_tokens[:20].tolist()}，原始文本: {repr(raw_text[:200])}")
+            return text
+        return ""
 
     @memory_guarded(min_avail_pct=0.10, on_critical='yield_error')
     def generate_stream(self, prompt: str, tokenizer, max_new_tokens: int = 512,

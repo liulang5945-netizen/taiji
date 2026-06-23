@@ -2,115 +2,118 @@
   <div class="life-status-view">
     <header class="view-header">
       <div class="header-left">
-        <n-button quaternary size="small" @click="goHome">
-          ← 回到对话
-        </n-button>
         <h1>生命状态</h1>
       </div>
-      <n-tag :type="connected ? 'success' : 'error'" size="small">
-        {{ connected ? '已连接' : '未连接' }}
+      <n-tag :type="runtimeStore.connectionClass === 'connected' ? 'success' : 'error'" size="small">
+        {{ runtimeStore.connectionStatus }}
       </n-tag>
     </header>
 
     <div class="life-content">
       <!-- 态极形象 -->
       <div class="taiji-avatar-section">
-        <div class="avatar-ring" :class="{ active: taijiStatus?.has_model }">
+        <div class="avatar-ring" :class="{ active: runtimeStore.health.modelLoaded }">
           <div class="avatar-inner">
-            <span class="avatar-emoji">{{ currentEmoji }}</span>
+            <img src="/logo.svg" alt="态极" class="avatar-logo" />
           </div>
         </div>
         <h2>态极</h2>
         <p class="status-text">
-          {{ taijiStatus?.has_model ? '我已醒来，准备与你交流' : '我还在沉睡中...' }}
+          {{ runtimeStore.health.modelLoaded ? '我已醒来，准备与你交流' : '我还在沉睡中...' }}
         </p>
         <!-- 当前生命活动状态 -->
         <p v-if="currentActivity" class="activity-text">
           {{ currentActivity }}
         </p>
+        <!-- 生命状态标签 -->
+        <div class="life-state-chip" v-if="life.life_state">
+          <Activity :size="14" />
+          <span>{{ lifeStateText }}</span>
+          <span v-if="life.is_running" class="running-dot"></span>
+        </div>
       </div>
 
       <!-- 需求状态 -->
-      <div class="needs-section" v-if="taijiStatus?.needs">
+      <div class="needs-section" v-if="life.needs">
         <h3>内在需求</h3>
         <div class="needs-grid">
           <div class="need-item">
-            <span class="need-label">🍚 饥饿</span>
+            <span class="need-label"><Apple :size="14" /> 饥饿</span>
             <div class="need-bar">
-              <div class="need-fill" :style="{ width: taijiStatus.needs.hunger + '%' }"
-                   :class="{ critical: taijiStatus.needs.hunger > 70 }"></div>
+              <div class="need-fill" :style="{ width: (life.needs.hunger || 0) + '%' }"
+                   :class="{ critical: (life.needs.hunger || 0) > 70 }"></div>
             </div>
-            <span class="need-value">{{ Math.round(taijiStatus.needs.hunger) }}</span>
+            <span class="need-value">{{ Math.round(life.needs.hunger || 0) }}</span>
           </div>
           <div class="need-item">
-            <span class="need-label">😴 疲劳</span>
+            <span class="need-label"><Moon :size="14" /> 疲劳</span>
             <div class="need-bar">
-              <div class="need-fill" :style="{ width: taijiStatus.needs.fatigue + '%' }"
-                   :class="{ critical: taijiStatus.needs.fatigue > 80 }"></div>
+              <div class="need-fill" :style="{ width: (life.needs.fatigue || 0) + '%' }"
+                   :class="{ critical: (life.needs.fatigue || 0) > 80 }"></div>
             </div>
-            <span class="need-value">{{ Math.round(taijiStatus.needs.fatigue) }}</span>
+            <span class="need-value">{{ Math.round(life.needs.fatigue || 0) }}</span>
           </div>
           <div class="need-item">
-            <span class="need-label">😐 无聊</span>
+            <span class="need-label"><Radio :size="14" /> 无聊</span>
             <div class="need-bar">
-              <div class="need-fill" :style="{ width: taijiStatus.needs.boredom + '%' }"
-                   :class="{ critical: taijiStatus.needs.boredom > 60 }"></div>
+              <div class="need-fill" :style="{ width: (life.needs.boredom || 0) + '%' }"
+                   :class="{ critical: (life.needs.boredom || 0) > 60 }"></div>
             </div>
-            <span class="need-value">{{ Math.round(taijiStatus.needs.boredom) }}</span>
+            <span class="need-value">{{ Math.round(life.needs.boredom || 0) }}</span>
           </div>
           <div class="need-item">
-            <span class="need-label">😰 压力</span>
+            <span class="need-label"><Activity :size="14" /> 压力</span>
             <div class="need-bar">
-              <div class="need-fill" :style="{ width: taijiStatus.needs.stress + '%' }"
-                   :class="{ critical: taijiStatus.needs.stress > 70 }"></div>
+              <div class="need-fill" :style="{ width: (life.needs.stress || 0) + '%' }"
+                   :class="{ critical: (life.needs.stress || 0) > 70 }"></div>
             </div>
-            <span class="need-value">{{ Math.round(taijiStatus.needs.stress) }}</span>
+            <span class="need-value">{{ Math.round(life.needs.stress || 0) }}</span>
           </div>
           <div class="need-item">
-            <span class="need-label">🔍 好奇</span>
+            <span class="need-label"><Eye :size="14" /> 好奇</span>
             <div class="need-bar">
-              <div class="need-fill curiosity" :style="{ width: taijiStatus.needs.curiosity + '%' }"></div>
+              <div class="need-fill curiosity" :style="{ width: (life.needs.curiosity || 0) + '%' }"></div>
             </div>
-            <span class="need-value">{{ Math.round(taijiStatus.needs.curiosity) }}</span>
+            <span class="need-value">{{ Math.round(life.needs.curiosity || 0) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 生命状态 -->
+      <!-- 生命状态卡片 -->
       <div class="status-grid">
-          <div class="status-card">
-          <div class="status-icon">💪</div>
+        <div class="status-card">
+          <div class="status-icon"><Heart :size="18" /></div>
           <div class="status-info">
             <span class="status-label">身体状态</span>
-            <span class="status-value" :class="{ healthy: taijiStatus?.body?.healthy }">
-              {{ taijiStatus?.body?.healthy ? '健康' : '需要关注' }}
+            <span class="status-value" :class="{ healthy: runtimeStore.health.modelLoaded }">
+              {{ runtimeStore.health.modelLoaded ? '健康' : '需要关注' }}
             </span>
           </div>
         </div>
         <div class="status-card">
-          <div class="status-icon">🦾</div>
+          <div class="status-icon"><Footprints :size="18" /></div>
           <div class="status-info">
             <span class="status-label">行动能力</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body?.limbs_available }">
-              {{ taijiStatus?.body?.limbs_available ? '可用' : '不可用' }}
+            <span class="status-value" :class="{ available: toolsAvailable }">
+              {{ toolsAvailable ? '可用' : '不可用' }}
             </span>
           </div>
         </div>
         <div class="status-card">
-          <div class="status-icon">⚡</div>
+          <div class="status-icon"><Zap :size="18" /></div>
           <div class="status-info">
             <span class="status-label">代谢系统</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body?.metabolism_available }">
-              {{ taijiStatus?.body?.metabolism_available ? '正常' : '异常' }}
+            <span class="status-value" :class="{ available: life.is_running }">
+              {{ life.is_running ? '正常' : '未启动' }}
             </span>
           </div>
         </div>
         <div class="status-card">
-          <div class="status-icon">👁️</div>
+          <div class="status-icon"><Eye :size="18" /></div>
           <div class="status-info">
             <span class="status-label">感知能力</span>
-            <span class="status-value" :class="{ available: taijiStatus?.body?.senses_available }">
-              {{ taijiStatus?.body?.senses_available ? '灵敏' : '迟钝' }}
+            <span class="status-value" :class="{ available: runtimeStore.health.state === 'connected' }">
+              {{ runtimeStore.health.state === 'connected' ? '灵敏' : '迟钝' }}
             </span>
           </div>
         </div>
@@ -118,21 +121,21 @@
 
       <!-- 互动按钮 -->
       <div class="action-buttons">
-        <n-button strong secondary type="error" size="large" class="life-action-btn" @click="feedTaiji">
-          <span class="btn-icon">🍎</span>
-          <span class="btn-text">喂养</span>
+        <n-button strong secondary type="error" size="large" class="life-action-btn" @click="feedTaiji" :disabled="actionLoading">
+          <template #icon><Apple :size="16" /></template>
+          喂养
         </n-button>
-        <n-button strong secondary type="info" size="large" class="life-action-btn" @click="sleepTaiji">
-          <span class="btn-icon">😴</span>
-          <span class="btn-text">睡眠</span>
+        <n-button strong secondary type="info" size="large" class="life-action-btn" @click="sleepTaiji" :disabled="actionLoading">
+          <template #icon><Moon :size="16" /></template>
+          睡眠
         </n-button>
-        <n-button strong secondary type="success" size="large" class="life-action-btn" @click="playTaiji">
-          <span class="btn-icon">🎮</span>
-          <span class="btn-text">玩耍</span>
+        <n-button strong secondary type="success" size="large" class="life-action-btn" @click="playTaiji" :disabled="actionLoading">
+          <template #icon><Gamepad2 :size="16" /></template>
+          玩耍
         </n-button>
-        <n-button strong secondary type="warning" size="large" class="life-action-btn" @click="trainTaiji">
-          <span class="btn-icon">🧠</span>
-          <span class="btn-text">训练</span>
+        <n-button strong secondary type="warning" size="large" class="life-action-btn" @click="trainTaiji" :disabled="actionLoading">
+          <template #icon><Brain :size="16" /></template>
+          训练
         </n-button>
       </div>
 
@@ -141,9 +144,27 @@
         <p>{{ actionResult }}</p>
       </div>
 
+      <!-- 最强烈的需求 -->
+      <div v-if="life.dominant_need" class="dominant-need">
+        <span class="dominant-label">最强烈的需求：</span>
+        <span class="dominant-value">{{ dominantNeedText }}</span>
+      </div>
+
+      <!-- 生命统计 -->
+      <div class="life-stats" v-if="life.is_running">
+        <div class="stat-item">
+          <span class="stat-label">总交互次数</span>
+          <span class="stat-value">{{ life.total_interactions || 0 }}</span>
+        </div>
+        <div class="stat-item" v-if="life.uptime_seconds">
+          <span class="stat-label">运行时间</span>
+          <span class="stat-value">{{ formatUptime(life.uptime_seconds) }}</span>
+        </div>
+      </div>
+
       <!-- 生命活动日志 -->
       <div class="activity-log" v-if="activityLog.length">
-        <h3>📡 生命活动日志</h3>
+        <h3><Activity :size="16" /> 生命活动日志</h3>
         <div class="log-list">
           <div v-for="(log, i) in activityLog" :key="i" class="log-entry"
                :class="'log-' + log.type">
@@ -158,45 +179,57 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useWebSocket } from '@/composables/useWebSocket.js'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
+import { useRuntimeStore } from '@/stores/runtimeStore.js'
+import { API_BASE, authFetch } from '@/composables/apiClient.js'
+import {
+  Heart, Footprints, Zap, Eye,
+  Apple, Moon, Gamepad2, Brain,
+  Activity, Radio
+} from 'lucide-vue-next'
 
-const router = useRouter()
-function goHome() { router.push('/').catch(() => {}) }
-
-const {
-  connected,
-  taijiStatus,
-  feed,
-  sleep,
-  play,
-  train,
-  getStatus,
-  on,
-} = useWebSocket()
+const runtimeStore = useRuntimeStore()
+const toast = inject('toast', () => {})
 
 const actionResult = ref('')
 const activityLog = ref([])
 const currentActivity = ref('')
+const actionLoading = ref(false)
 
-// 当前表情（根据生命状态变化）
-const currentEmoji = computed(() => {
-  if (!taijiStatus.value?.has_model) return '😴'
-  const state = taijiStatus.value?.life_state || 'idle'
-  const emojiMap = {
-    'idle': '😊',
-    'feeding': '🍚',
-    'sleeping': '💤',
-    'playing': '🎮',
-    'working': '🏃',
+// 从 runtimeStore 获取生命数据
+const life = computed(() => runtimeStore.life || {})
+
+// 生命状态文本
+const lifeStateText = computed(() => {
+  const stateMap = { idle: '清醒', sleeping: '睡眠', feeding: '吸收', playing: '探索', working: '执行' }
+  return stateMap[life.value.life_state || 'idle'] || '清醒'
+})
+
+// 工具是否可用
+const toolsAvailable = computed(() => {
+  return runtimeStore.tools && runtimeStore.tools.length > 0
+})
+
+// 最强烈的需求文本
+const dominantNeedText = computed(() => {
+  const needMap = {
+    hunger: '🍚 饥饿 — 需要喂养',
+    fatigue: '😴 疲劳 — 需要休息',
+    boredom: '🎮 无聊 — 需要玩耍',
+    stress: '😰 压力 — 需要放松',
+    curiosity: '🔍 好奇 — 需要探索',
   }
-  return emojiMap[state] || '😊'
+  return needMap[life.value.dominant_need] || life.value.dominant_need || ''
 })
 
-onMounted(() => {
-  getStatus()
-})
+// 格式化运行时间
+function formatUptime(seconds) {
+  if (!seconds || seconds <= 0) return '-'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}小时${m}分钟`
+  return `${m}分钟`
+}
 
 // 添加日志
 function addLog(type, emoji, message) {
@@ -211,89 +244,85 @@ function addLog(type, emoji, message) {
   }
 }
 
-// 监听生命事件（来自 EventBus 广播）
-on('life_event', (data) => {
-  const { event_type, data: eventData } = data
-  const emojiMap = {
-    'feed_complete': '🍚',
-    'sleep_complete': '💤',
-    'play_complete': '🎮',
-    'life_started': '🌱',
-    'life_stopped': '⏸️',
-    'interaction_success': '✅',
-    'interaction_failure': '❌',
+// 通用生命活动调用
+async function callLifeAction(action) {
+  actionLoading.value = true
+  actionResult.value = ''
+  try {
+    const resp = await authFetch(`${API_BASE}/api/life/${action}`, { method: 'POST' })
+    const data = await resp.json()
+    if (data.success) {
+      actionResult.value = data.message
+      const emojiMap = { feed: '🍚', sleep: '💤', play: '🎮' }
+      addLog(action, emojiMap[action] || '✅', data.message)
+      toast(`✅ ${data.message}`, 'success')
+    } else {
+      actionResult.value = `失败: ${data.message}`
+      addLog(action, '❌', `失败: ${data.message}`)
+      toast(`❌ ${data.message}`, 'error')
+    }
+  } catch (e) {
+    actionResult.value = `请求失败: ${e.message}`
+    addLog(action, '❌', `请求失败: ${e.message}`)
+    toast(`❌ 请求失败: ${e.message}`, 'error')
+  } finally {
+    actionLoading.value = false
+    currentActivity.value = ''
+    // 刷新状态
+    runtimeStore.refreshAll()
   }
-  const emoji = emojiMap[event_type] || '📌'
-  const messageMap = {
-    'feed_complete': '吃饭完成',
-    'sleep_complete': '睡醒了',
-    'play_complete': '玩耍完成',
-    'life_started': '生命启动',
-    'life_stopped': '生命暂停',
-    'interaction_success': '交互成功',
-    'interaction_failure': '交互失败',
-  }
-  const message = messageMap[event_type] || event_type
-  addLog(event_type, emoji, message)
-
-  // 刷新状态
-  getStatus()
-})
-
-// 监听响应
-on('feed_response', (data) => {
-  const success = data.result?.success
-  actionResult.value = success ? data.result.message : `喂养失败: ${data.result?.message}`
-  addLog('feed', '🍚', success ? '手动喂养完成' : '喂养失败')
-  getStatus()
-})
-
-on('sleep_response', (data) => {
-  const success = data.result?.success
-  actionResult.value = success ? data.result.message : `睡眠失败: ${data.result?.message}`
-  addLog('sleep', '💤', success ? '手动睡眠完成' : '睡眠失败')
-  getStatus()
-})
-
-on('play_response', (data) => {
-  const success = data.result?.success
-  actionResult.value = success ? data.result.message : `玩耍失败: ${data.result?.message}`
-  addLog('play', '🎮', success ? '手动玩耍完成' : '玩耍失败')
-  getStatus()
-})
-
-on('training_start', () => {
-  actionResult.value = '开始训练...'
-  currentActivity.value = '🧠 正在训练...'
-  addLog('train', '🧠', '开始训练')
-})
-
-on('training_complete', (data) => {
-  const success = data.result?.success
-  actionResult.value = success ? data.result.message : `训练失败: ${data.result?.message}`
-  currentActivity.value = ''
-  addLog('train', '🧠', success ? '训练完成' : '训练失败')
-  getStatus()
-})
+}
 
 function feedTaiji() {
   currentActivity.value = '🍚 正在吃饭...'
-  feed('用户喂养')
+  callLifeAction('feed')
 }
 
 function sleepTaiji() {
   currentActivity.value = '💤 正在睡觉...'
-  sleep()
+  callLifeAction('sleep')
 }
 
 function playTaiji() {
   currentActivity.value = '🎮 正在玩耍...'
-  play()
+  callLifeAction('play')
 }
 
-function trainTaiji() {
-  train(3, 5e-5)
+async function trainTaiji() {
+  actionLoading.value = true
+  currentActivity.value = '🧠 正在训练...'
+  try {
+    const resp = await authFetch(`${API_BASE}/api/training/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epochs: 3, learning_rate: 5e-5 }),
+    })
+    const data = await resp.json()
+    actionResult.value = data.message || '训练已启动'
+    addLog('train', '🧠', data.message || '训练已启动')
+  } catch (e) {
+    actionResult.value = `训练请求失败: ${e.message}`
+  } finally {
+    actionLoading.value = false
+    currentActivity.value = ''
+  }
 }
+
+let refreshInterval = null
+onMounted(() => {
+  runtimeStore.refreshAll()
+  // 每 15 秒自动刷新
+  refreshInterval = setInterval(() => {
+    runtimeStore.refreshAll().catch(() => {})
+  }, 15000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
+})
 </script>
 
 <style scoped>
@@ -344,9 +373,11 @@ function trainTaiji() {
   background: var(--primary-gradient);
   padding: 4px;
   transition: var(--transition);
+  opacity: 0.5;
 }
 
 .avatar-ring.active {
+  opacity: 1;
   background: linear-gradient(135deg, var(--info) 0%, #0099cc 100%);
   box-shadow: var(--shadow-glow);
 }
@@ -359,12 +390,9 @@ function trainTaiji() {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(12px);
+  color: var(--primary);
 }
-
-.avatar-emoji {
-  font-size: 48px;
-}
+.avatar-logo { width: 64px; height: 64px; }
 
 .taiji-avatar-section h2 {
   color: var(--text);
@@ -382,6 +410,28 @@ function trainTaiji() {
   font-size: 14px;
   margin-top: 8px;
   animation: pulse 2s infinite;
+}
+
+.life-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  background: var(--primary-subtle);
+  border: 1px solid var(--primary-light);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
@@ -524,33 +574,6 @@ function trainTaiji() {
   padding: 0 10px;
 }
 
-.life-action-btn :deep(.n-button__content) {
-  width: 100%;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.btn-icon,
-.btn-text {
-  min-width: 0;
-  line-height: 1;
-}
-
-.btn-icon {
-  font-size: 18px;
-  text-align: center;
-}
-
-.btn-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 操作结果 */
 .action-result {
   padding: 16px;
@@ -564,6 +587,53 @@ function trainTaiji() {
   color: var(--info);
   font-size: 14px;
   margin: 0;
+}
+
+/* 最强烈的需求 */
+.dominant-need {
+  text-align: center;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.dominant-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.dominant-value {
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* 生命统计 */
+.life-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 24px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 /* 生命活动日志 */
@@ -601,10 +671,6 @@ function trainTaiji() {
 .log-sleep { border-left-color: var(--purple); }
 .log-play { border-left-color: var(--success); }
 .log-train { border-left-color: var(--warning); }
-.log-life_started { border-left-color: var(--success); }
-.log-life_stopped { border-left-color: var(--danger); }
-.log-interaction_success { border-left-color: var(--success); }
-.log-interaction_failure { border-left-color: var(--danger); }
 
 @keyframes slide-in {
   from { opacity: 0; transform: translateX(-10px); }
@@ -632,10 +698,7 @@ function trainTaiji() {
   .view-header h1 { font-size: 22px; }
   .status-grid { grid-template-columns: 1fr; }
   .action-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .action-btn { min-width: 80px; padding: 14px 10px; }
-  .btn-icon { font-size: 22px; }
-  .btn-text { font-size: 12px; }
   .avatar-ring { width: 80px; height: 80px; }
-  .avatar-emoji { font-size: 36px; }
+  .life-stats { flex-direction: column; gap: 12px; }
 }
 </style>

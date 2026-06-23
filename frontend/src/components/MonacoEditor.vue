@@ -52,7 +52,8 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { Save } from 'lucide-vue-next';
-import { useApi, API_BASE } from '../composables/useApi.js';
+import { useApi } from '../composables/useApi.js';
+import { API_BASE, authFetch } from '../composables/apiClient.js';
 import { useAppStore } from '../stores/appStore.js';
 
 const { t } = useApi();
@@ -207,7 +208,7 @@ async function openFile(filePath) {
   }
 
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/file?name=${encodeURIComponent(filePath)}`);
+    const r = await authFetch(`${API_BASE}/api/workspace/file?name=${encodeURIComponent(filePath)}`);
     if (r.ok) {
       const data = await r.json();
       const name = filePath.split('/').pop() || filePath.split('\\').pop();
@@ -283,7 +284,7 @@ async function saveFile() {
   const content = editor ? editor.getValue() : fallbackContent.value;
   if (!content && content !== '') return;
   try {
-    const r = await fetch(`${API_BASE}/api/workspace/file`, {
+    const r = await authFetch(`${API_BASE}/api/workspace/file`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: activeTab.value, content }),
@@ -353,37 +354,121 @@ defineExpose({ openFile, saveFile, setTheme });
 </script>
 
 <style scoped>
-.monaco-wrapper { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-card); align-items: stretch; overflow: hidden; }
-.monaco-toolbar { display: grid; grid-template-columns: minmax(96px, 1fr) max-content; align-items: center; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 8px; min-height: 38px; gap: 8px; overflow: hidden; }
-.monaco-tabs { display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; gap: 2px; scrollbar-width: thin; }
-.monaco-tab { display: flex; align-items: center; gap: 4px; min-width: 46px; max-width: 190px; height: 32px; padding: 0 9px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; white-space: nowrap; border-bottom: 2px solid transparent; transition: all 0.15s ease; border-radius: 5px 5px 0 0; flex: 0 1 auto; }
+.monaco-wrapper {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  background: var(--editor-bg, var(--bg));
+  overflow: hidden;
+}
+
+/* 工具栏 */
+.monaco-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--toolbar-bg, var(--bg-surface));
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+  height: 36px; flex-shrink: 0;
+}
+.monaco-tabs {
+  display: flex; flex: 1; min-width: 0;
+  overflow-x: auto; overflow-y: hidden; gap: 1px;
+  scrollbar-width: none;
+}
+.monaco-tabs::-webkit-scrollbar { display: none; }
+.monaco-tab {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0; max-width: 180px; height: 34px;
+  padding: 0 10px; background: transparent; border: none;
+  color: var(--text-muted); cursor: pointer;
+  font-size: 12px; white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
 .monaco-tab:hover { background: var(--bg-hover); color: var(--text-secondary); }
-.monaco-tab.active { color: var(--text); background: var(--bg-card); border-bottom-color: var(--primary); font-weight: 500; }
-.tab-icon { font-size: 13px; flex-shrink: 0; }
-.tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tab-close { font-size: 14px; margin-left: 2px; opacity: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; transition: all 0.1s ease; flex-shrink: 0; }
-.monaco-tab:hover .tab-close { opacity: 0.5; }
-.tab-close:hover { opacity: 1 !important; background: var(--danger-light); color: var(--danger); }
-.monaco-actions { display: flex; gap: 6px; align-items: center; min-width: max-content; flex-shrink: 0; }
-.lang-select { width: 118px; height: 28px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); padding: 2px 24px 2px 8px; border-radius: 6px; font-size: 11px; outline: none; white-space: nowrap; text-overflow: ellipsis; }
+.monaco-tab.active {
+  color: var(--text); background: var(--bg-elevated);
+  border-bottom-color: var(--primary); font-weight: 500;
+}
+.tab-icon { font-size: 12px; flex-shrink: 0; }
+.tab-name { overflow: hidden; text-overflow: ellipsis; }
+.tab-close {
+  font-size: 14px; margin-left: 4px; opacity: 0;
+  width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+  border-radius: 3px; transition: all 0.1s ease; flex-shrink: 0;
+}
+.monaco-tab:hover .tab-close { opacity: 0.4; }
+.tab-close:hover { opacity: 1 !important; background: rgba(239,68,68,0.1); color: var(--danger); }
+
+/* 右侧操作区 */
+.monaco-actions {
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0; margin-left: 8px;
+}
+.lang-select {
+  width: 100px; height: 26px;
+  background: var(--bg-elevated); color: var(--text-secondary);
+  border: 1px solid var(--border); padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px; outline: none;
+}
 .lang-select:focus { border-color: var(--primary); }
-.btn-action { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; cursor: pointer; font-size: 14px; padding: 0; border-radius: 6px; transition: all 0.15s ease; color: var(--text-secondary); flex-shrink: 0; }
+.btn-action {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent;
+  cursor: pointer; padding: 0;
+  border-radius: var(--radius-sm);
+  transition: all 0.12s ease; color: var(--text-secondary);
+}
 .btn-action:hover { background: var(--bg-hover); border-color: var(--border); }
-.monaco-editor-container { flex: 1; min-height: 0; height: 100%; }
-.monaco-statusbar { display: flex; gap: 16px; padding: 2px 12px; background: var(--bg); border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); min-height: 22px; align-items: center; }
+
+/* 编辑器容器 */
+.monaco-editor-container {
+  flex: 1; min-height: 0; height: 100%;
+}
+
+/* 状态栏 */
+.monaco-statusbar {
+  display: flex; gap: 16px; padding: 2px 12px;
+  background: var(--toolbar-bg, var(--bg-surface));
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted);
+  height: 22px; align-items: center; flex-shrink: 0;
+}
 .dirty-indicator { color: var(--warning); }
-.monaco-loading { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; color: var(--text-muted); font-size: 13px; padding: 40px; }
-.loading-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+
+/* 加载/错误 */
+.monaco-loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  flex: 1; color: var(--text-muted); font-size: 13px; padding: 40px;
+}
+.loading-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
-.monaco-error { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: var(--danger); font-size: 13px; background: var(--danger-light); border-bottom: 1px solid var(--border); }
-.error-icon { font-size: 16px; }
+.monaco-error {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px; color: var(--danger); font-size: 13px;
+  background: var(--danger-light); border-bottom: 1px solid var(--border);
+}
+.error-icon { font-size: 14px; }
+
+/* Fallback 编辑器 */
 .fallback-editor { flex: 1; display: flex; min-height: 200px; }
-.fallback-textarea { flex: 1; width: 100%; padding: 12px 16px; border: none; outline: none; resize: none; font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace; font-size: 14px; line-height: 1.6; tab-size: 4; background: var(--bg-card); color: var(--text); }
-.fallback-textarea::placeholder { color: var(--text-muted); opacity: 0.6; }
+.fallback-textarea {
+  flex: 1; width: 100%; padding: 12px 16px;
+  border: none; outline: none; resize: none;
+  font-family: var(--font-mono); font-size: 14px; line-height: 1.6; tab-size: 4;
+  background: var(--editor-bg, var(--bg)); color: var(--text);
+}
+.fallback-textarea::placeholder { color: var(--text-muted); opacity: 0.5; }
 
 @media (max-width: 720px) {
-  .monaco-toolbar { grid-template-columns: minmax(76px, 1fr) max-content; gap: 6px; }
-  .lang-select { width: 92px; }
-  .monaco-tab { max-width: 130px; padding-inline: 8px; }
+  .monaco-toolbar { padding: 0 6px; }
+  .lang-select { width: 80px; }
+  .monaco-tab { max-width: 120px; }
 }
 </style>

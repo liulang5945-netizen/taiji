@@ -1,5 +1,5 @@
 """
-Taiji ↔ 态极桥接层（态极已剥离，保留兼容接口）
+Taiji ↔ 态极桥接层
 """
 import logging
 from typing import Optional
@@ -8,16 +8,24 @@ logger = logging.getLogger("TaijiBridge")
 
 
 class TaijiBridge:
-    """态极桥接层（态极模块已剥离，此接口返回空）"""
+    """态极桥接层 — 连接 core 与 TaijiCore 生命系统"""
 
     def __init__(self):
         self._taiji = None
         self._initialized = False
 
     def initialize(self, model=None, tokenizer=None, device: str = "cpu"):
-        """态极已剥离，无法初始化"""
-        logger.warning("态极模块已剥离，TaijiBridge 无法初始化。如需态极功能，请安装态极模块。")
-        self._initialized = False
+        """初始化态极生命系统"""
+        if self._initialized:
+            return
+        try:
+            from taiji import TaijiCore
+            self._taiji = TaijiCore(model, tokenizer, device=device)
+            self._initialized = True
+            logger.info("TaijiBridge 初始化成功")
+        except Exception as e:
+            logger.warning(f"TaijiBridge 初始化失败: {e}")
+            self._initialized = False
 
     @property
     def taiji(self):

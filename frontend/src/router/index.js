@@ -44,7 +44,6 @@ const routes = [
     meta: { title: '系统设置' }
   },
   {
-    // 404 兜底路由
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     redirect: '/'
@@ -56,7 +55,6 @@ const router = createRouter({
   routes,
 })
 
-// 路由守卫：更新页面标题
 router.afterEach((to) => {
   const title = to.meta?.title
   if (title) {

@@ -19,6 +19,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from taiji.core.config import TrainingConfig
 from taiji.core.memory_watchdog import memory_guarded
+from taiji.services.settings_service import load_settings, save_settings
 
 # ── 全局线程优化：使用物理核心数，但为 QtWebEngine 预留 1 个核心 ──
 # 防止训练/推理时的密集 CPU 计算导致 WebEngine 子进程无 CPU 可用而崩溃重启
@@ -190,7 +191,7 @@ def _check_enable_quant(config: TrainingConfig, device: str) -> bool:
     return False
 
 
-@memory_guarded(min_avail_pct=0.30, on_critical='raise')
+@memory_guarded(min_avail_pct=0.02, on_critical='raise')
 def download_and_load_model(config: TrainingConfig):
     """
     下载并加载模型和 tokenizer
@@ -206,8 +207,23 @@ def download_and_load_model(config: TrainingConfig):
     logger.info(f"缓存目录: {cache_dir or '默认'}")
     logger.info(f"设备: {device}")
 
+    # 检查是否为 LoRA 适配器目录
+    is_lora_adapter = False
+    lora_adapter_path = None
+    if os.path.exists(os.path.join(model_name, "adapter_config.json")):
+        import json as _json
+        with open(os.path.join(model_name, "adapter_config.json"), "r") as f:
+            adapter_config = _json.load(f)
+        base_model = adapter_config.get("base_model_name_or_path", "")
+        if base_model:
+            is_lora_adapter = True
+            lora_adapter_path = model_name
+            model_name = base_model
+            logger.info(f"检测到 LoRA 适配器: {lora_adapter_path}")
+            logger.info(f"基底模型: {model_name}")
+
     # 修复本地路径读取问题：自动解析 HuggingFace 缓存目录格式
-    if os.path.exists(model_name):
+    if not is_lora_adapter and os.path.exists(model_name):
         model_name = _resolve_model_path(model_name)
         logger.info(f"解析后的模型路径: {model_name}")
     elif _looks_like_local_path(model_name):
@@ -222,25 +238,19 @@ def download_and_load_model(config: TrainingConfig):
 
     # ⭐ 安全检查：如果解析到 .gguf 文件，说明用户应使用 GGUF 模式加载
     if model_name.lower().endswith('.gguf'):
-        import json as _json
-        from taiji.core.utils import get_external_path
         error_msg = (
             f"❌ 该目录下只有 .gguf 量化模型文件，无法通过 HuggingFace Transformers 加载。\n"
             f"   GGUF 文件: {model_name}\n\n"
             f"🔧 系统已自动切换为 GGUF 推理引擎，请重启 Taiji 使设置生效。"
         )
         try:
-            settings_path = get_external_path("app_settings.json")
-            if os.path.exists(settings_path):
-                with open(settings_path, "r", encoding="utf-8") as f:
-                    saved = _json.load(f)
-                saved["model_type"] = "gguf"
-                saved["gguf_path"] = model_name
-                with open(settings_path, "w", encoding="utf-8") as f:
-                    _json.dump(saved, f, ensure_ascii=False, indent=2)
-                logger.info("✅ 已自动修复 app_settings.json，切换为 GGUF 模式")
+            saved = load_settings()
+            saved["model_type"] = "gguf"
+            saved["gguf_path"] = model_name
+            save_settings(saved)
+            logger.info("Auto-fixed settings to GGUF mode")
         except Exception as _e:
-            logger.warning(f"自动修复 settings 失败: {_e}")
+            logger.warning(f"Failed to auto-fix settings: {_e}")
         raise RuntimeError(error_msg)
 
     torch_dtype = config.get_torch_dtype()
@@ -313,6 +323,17 @@ def download_and_load_model(config: TrainingConfig):
     # 非CUDA设备需要手动移动到目标设备（但量化后的模型不能直接 .to()）
     if device not in ("cuda", "auto") and not use_quant:
         model = model.to(device)
+
+    # 加载 LoRA 适配器（如果检测到）
+    if is_lora_adapter and lora_adapter_path:
+        try:
+            from peft import PeftModel
+            model = PeftModel.from_pretrained(model, lora_adapter_path)
+            logger.info(f"LoRA 适配器已加载: {lora_adapter_path}")
+        except ImportError:
+            logger.warning("未安装 peft 库，无法加载 LoRA 适配器。pip install peft")
+        except Exception as e:
+            logger.warning(f"LoRA 适配器加载失败: {e}")
 
     logger.info(f"模型加载成功！参数量: {model.num_parameters() / 1e9:.2f}B")
     return model, tokenizer
@@ -714,7 +735,7 @@ def list_published_models(base_dir: str) -> list:
 
 # ======================== GGUF 模型加载 ========================
 
-@memory_guarded(min_avail_pct=0.30, on_critical='raise')
+@memory_guarded(min_avail_pct=0.05, on_critical='raise')
 def load_gguf_model(config: TrainingConfig):
     """
     加载 GGUF 量化模型（用于低内存设备的本地推理）

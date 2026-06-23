@@ -26,7 +26,11 @@ def get_life_status() -> dict:
     return {
         "status": "ok",
         "is_running": status.get("is_running", False),
+        "life_state": status.get("life_state", "idle"),
         "needs": needs,
+        "dominant_need": status.get("dominant_need", ""),
+        "last_heartbeat": status.get("last_heartbeat"),
+        "last_activity": status.get("last_activity"),
         "total_interactions": status.get("total_interactions", 0),
         "uptime_seconds": status.get("uptime_seconds", 0),
     }

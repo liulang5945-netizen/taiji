@@ -2,23 +2,20 @@
 模型热切换 API 路由
 从 routes_system.py 拆分：模型切换、GGUF 下载、发布状态重置
 """
-import json
 import logging
 import os
-import sys
 import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from taiji.core.app_state import app_state
 from taiji.core.config import TrainingConfig, save_config
 from taiji.core.memory_watchdog import MemoryWatchdog, force_memory_refresh
 from taiji.core.utils import get_external_path
+from taiji.services.settings_service import load_settings, save_settings
 
 logger = logging.getLogger("ApiServer.ModelSwitch")
 router = APIRouter()
-
-SETTINGS_PATH = get_external_path("app_settings.json")
 
 # 模型切换并发锁（防止多次点击重复切换）
 _switch_lock = threading.Lock()
@@ -28,10 +25,7 @@ _switch_thread = None
 @router.post("/api/system/reload_model")
 def reload_model():
     """下载模型后立即热加载（兼容旧接口，内部委托 switch_model）"""
-    settings = {}
-    if os.path.exists(SETTINGS_PATH):
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            settings = json.load(f)
+    settings = load_settings()
     gguf_path = settings.get("gguf_path", "")
     model_name = settings.get("model_name", "")
     model_type = settings.get("model_type", "gguf" if gguf_path else "huggingface")
@@ -77,7 +71,6 @@ def switch_model(req: dict):
         def _do_switch_async():
             """后台线程执行的异步模型切换"""
             import traceback
-            settings_path = SETTINGS_PATH
             try:
                 # ── 0. 内存预检 ──
                 app_state.update_switch_status("switching", "正在检查内存状态...")
@@ -95,10 +88,7 @@ def switch_model(req: dict):
 
                 # ── 1. 保存新配置 ──
                 app_state.update_switch_status("switching", "正在保存配置...")
-                settings = {}
-                if os.path.exists(settings_path):
-                    with open(settings_path, "r", encoding="utf-8") as f:
-                        settings = json.load(f)
+                settings = load_settings()
 
                 settings["model_type"] = model_type
 
@@ -118,8 +108,7 @@ def switch_model(req: dict):
                 settings["n_gpu_layers"] = settings.get("n_gpu_layers", -1)
                 settings["n_ctx"] = settings.get("n_ctx", 2048)
 
-                with open(settings_path, "w", encoding="utf-8") as f:
-                    json.dump(settings, f, ensure_ascii=False, indent=2)
+                save_settings(settings)
                 logger.info(f"📝 配置已保存: model_type={model_type}, path={gguf_path or model_name}")
 
                 # ── 2. 卸载旧模型 ──
@@ -232,12 +221,8 @@ def _do_switch_model(model_type: str, gguf_path: str, model_name: str):
     """同步执行模型切换（供 reload_model 等旧接口使用）"""
     import traceback
 
-    settings_path = SETTINGS_PATH
     try:
-        settings = {}
-        if os.path.exists(settings_path):
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+        settings = load_settings()
 
         settings["model_type"] = model_type
 
@@ -255,8 +240,7 @@ def _do_switch_model(model_type: str, gguf_path: str, model_name: str):
         settings["n_gpu_layers"] = settings.get("n_gpu_layers", -1)
         settings["n_ctx"] = settings.get("n_ctx", 2048)
 
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
+        save_settings(settings)
         logger.info(f"📝 配置已保存: model_type={model_type}, path={gguf_path or model_name}")
 
         app_state.unload_model()

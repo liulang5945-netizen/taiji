@@ -11,6 +11,8 @@ import time
 from typing import Optional, Dict
 from pathlib import Path
 
+from taiji.services.settings_service import load_settings
+
 logger = logging.getLogger("Taiji.ImageGen")
 
 
@@ -55,14 +57,7 @@ class TaijiImageGenerator:
     def _generate_cloud(self, prompt: str, size: str) -> Dict:
         """云端 API 生成"""
         try:
-            settings_path = os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), "app_settings.json")
-            if not os.path.exists(settings_path):
-                return {"success": False, "path": "", "backend": "cloud",
-                        "error": "未找到设置文件"}
-
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+            settings = load_settings()
 
             api_key = settings.get("cloud_api_key", "")
             api_base = settings.get("cloud_api_base", "")
@@ -70,35 +65,32 @@ class TaijiImageGenerator:
                 return {"success": False, "path": "", "backend": "cloud",
                         "error": "未配置云端 API"}
 
-            # 使用 OpenAI 兼容的图像生成 API
-            import requests
+            # 使用 OpenAI 兼容的图像生成 API（纯 stdlib）
+            import urllib.request
             url = api_base.rstrip("/") + "/images/generations"
             w, h = size.split("x") if "x" in size else (512, 512)
-            payload = {
-                "prompt": prompt,
-                "n": 1,
-                "size": f"{w}x{h}",
-                "response_format": "url",
-            }
+            payload = json.dumps({
+                "prompt": prompt, "n": 1, "size": f"{w}x{h}", "response_format": "url",
+            }).encode('utf-8')
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
-            resp = requests.post(url, json=payload, headers=headers, timeout=60)
-            if resp.status_code == 200:
-                data = resp.json()
-                image_url = data.get("data", [{}])[0].get("url", "")
-                if image_url:
-                    # 下载图像
-                    img_resp = requests.get(image_url, timeout=30)
-                    filename = f"img_{int(time.time())}.png"
-                    filepath = os.path.join(self.output_dir, filename)
-                    with open(filepath, "wb") as f:
-                        f.write(img_resp.content)
-                    return {"success": True, "path": filepath, "backend": "cloud",
-                            "url": image_url}
-            return {"success": False, "path": "", "backend": "cloud",
-                    "error": f"API 返回 {resp.status_code}"}
+            req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            image_url = data.get("data", [{}])[0].get("url", "")
+            if image_url:
+                # 下载图像
+                img_req = urllib.request.Request(image_url)
+                with urllib.request.urlopen(img_req, timeout=30) as img_resp:
+                    img_data = img_resp.read()
+                filename = f"img_{int(time.time())}.png"
+                filepath = os.path.join(self.output_dir, filename)
+                with open(filepath, "wb") as f:
+                    f.write(img_data)
+                return {"success": True, "path": filepath, "backend": "cloud", "url": image_url}
+            return {"success": False, "path": "", "backend": "cloud", "error": "API 未返回图像 URL"}
         except Exception as e:
             return {"success": False, "path": "", "backend": "cloud",
                     "error": str(e)}

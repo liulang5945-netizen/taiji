@@ -502,14 +502,11 @@ def register_local_tools():
         _search_key = ""
         _ui_settings = {}
         try:
-            from taiji.core.config import get_external_path
-            _sp = get_external_path("app_settings.json")
-            import os as _os
-            if _os.path.exists(_sp):
-                with open(_sp, "r", encoding="utf-8") as _f:
-                    _ui_settings = _json.load(_f)
-                _search_engine = _ui_settings.get("search_engine", "智能多核")
-                _search_key = _ui_settings.get("search_key", "")
+            from taiji.services.settings_service import load_settings
+
+            _ui_settings = load_settings()
+            _search_engine = _ui_settings.get("search_engine", "\u667a\u80fd\u591a\u6838")
+            _search_key = _ui_settings.get("search_key", "")
         except Exception:
             pass
         # 优先使用统一 web 模块，回退到旧版搜索
@@ -600,16 +597,24 @@ def register_local_tools():
                 except Exception as e:
                     logger.debug(f"MCP fetch 失败，降级: {e}")
 
-            # 降级到 requests + BeautifulSoup
+            # 降级到 urllib + regex（纯 stdlib）
             try:
-                import requests
-                from bs4 import BeautifulSoup
-                resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-                resp.encoding = resp.apparent_encoding
-                soup = BeautifulSoup(resp.text, "html.parser")
-                for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-                    tag.decompose()
-                return soup.get_text(separator="\n", strip=True)[:10000]
+                import urllib.request
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    html = resp.read().decode('utf-8', errors='ignore')
+                # 移除无用标签并提取文本
+                text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<header[^>]*>.*?</header>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<aside[^>]*>.*?</aside>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                text = re.sub(r'<(?:br|p|div|h[1-6]|li)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+                text = re.sub(r'<[^>]+>', '', text)
+                text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&nbsp;', ' ')
+                text = re.sub(r'\n{3,}', '\n\n', text)
+                return text.strip()[:10000]
             except Exception as e:
                 return f"抓取失败: {e}"
 

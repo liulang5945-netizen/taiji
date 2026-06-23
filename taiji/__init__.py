@@ -7,23 +7,40 @@ One line to start Taiji:
     taiji = TaijiCore(model, tokenizer)
     taiji.start_life()
 
-Taiji is a natively trained AI life form, NOT a fine-tuned pre-trained model.
+态极递归蒸馏进化 (Taiji Recursive Distillation):
+- 基底: Qwen2.5 系列（提供语言能力）
+- 生命系统: 饥饿、好奇、疲劳、进化（提供态极性）
+- 进化路线: 小态极火种 → 生成进化语料 → 蒸馏 → 更大态极 → 循环
+- 核心哲学: 小态极把自己的结构投射到更大的计算载体中
 """
 import os
 import logging
 from typing import Optional, Dict, Any
 
-from taiji.loader import load_model, save_model, create_model
-from taiji.architecture import ModelSelf
-from taiji.core.inference import NativeInferenceEngine
-
-# 态极多模态引擎（旧接口，向后兼容）
-try:
-    from taiji.multimodal.multimodal_engine import TaijiMultimodalEngine
-except ImportError:
-    TaijiMultimodalEngine = None
-
 logger = logging.getLogger("TaijiCore")
+
+
+def __getattr__(name: str):
+    """Lazy compatibility exports for model-heavy package attributes."""
+    if name in {"load_model", "save_model", "create_model"}:
+        from taiji import loader
+
+        return getattr(loader, name)
+    if name == "ModelSelf":
+        from taiji.architecture import ModelSelf
+
+        return ModelSelf
+    if name == "NativeInferenceEngine":
+        from taiji.core.inference import NativeInferenceEngine
+
+        return NativeInferenceEngine
+    if name == "TaijiMultimodalEngine":
+        try:
+            from taiji.multimodal.multimodal_engine import TaijiMultimodalEngine
+        except ImportError:
+            return None
+        return TaijiMultimodalEngine
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class TaijiCore:
@@ -130,6 +147,10 @@ class TaijiCore:
         from taiji.life.science_engine import ScienceEngine
         self._science = ScienceEngine()
 
+        # ── 递归改进系统（Gödel Agent 思想）──
+        from taiji.life.recursive_improver import RecursiveImprover
+        self._improver = RecursiveImprover()
+
         # ── 生命调度器（本能系统）──
         self._life = LifeScheduler(event_bus=self.events)
 
@@ -192,6 +213,11 @@ class TaijiCore:
     def evolution(self):
         """进化引擎"""
         return self._evolution
+
+    @property
+    def improver(self):
+        """递归改进系统"""
+        return self._improver
 
     @property
     def explore(self):
@@ -389,6 +415,8 @@ class TaijiCore:
     def export(self, path: str):
         """将态极导出为独立包"""
         if self.body.model and self.body.tokenizer:
+            from taiji.loader import save_model
+
             save_model(self.body.model, self.body.tokenizer, path)
             logger.info(f"Taiji exported to {path}")
         else:
@@ -399,6 +427,8 @@ class TaijiCore:
     @classmethod
     def load(cls, model_path: str, device: str = "cpu") -> "TaijiCore":
         """从磁盘加载态极"""
+        from taiji.loader import load_model
+
         model, tokenizer = load_model(model_path, device=device)
         taiji = cls(model=model, tokenizer=tokenizer, device=device)
         logger.info(f"Taiji loaded from {model_path}")

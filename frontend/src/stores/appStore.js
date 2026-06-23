@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { locales } from '@/locales/index.js'
-
-// 内联 API_BASE（避免与 useApi.js 循环依赖）
-const _API_BASE = import.meta.env.DEV
-  ? ''
-  : `${window.location.protocol}//${window.location.hostname}:8000`
+import { API_BASE, authFetch } from '@/composables/apiClient.js'
 
 // 防抖保存 UI 设置到后端
 let _uiSaveTimer = null
@@ -13,7 +9,7 @@ function _debouncedSaveUI(data) {
   if (_uiSaveTimer) clearTimeout(_uiSaveTimer)
   _uiSaveTimer = setTimeout(async () => {
     try {
-      await fetch(`${_API_BASE}/api/settings`, {
+      await authFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

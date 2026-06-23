@@ -1,25 +1,22 @@
-"""
-API 集成测试
-使用 FastAPI TestClient 测试各路由模块的端点是否正确注册和响应
-"""
-import pytest
-import sys
-import os
+﻿"""API integration tests for router registration and basic responses."""
 
-# 确保项目根目录在 sys.path 中
+import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _create_test_client():
-    """创建测试客户端（延迟导入避免启动时加载模型）"""
+    """Create a test client without startup side effects."""
     from fastapi.testclient import TestClient
-    from api.app import app
-    return TestClient(app)
+    from api.app import create_app
+
+    return TestClient(create_app(startup_tasks=False))
 
 
 class TestHealthEndpoints:
-    """健康检查端点"""
-
     def test_health_returns_json(self):
         client = _create_test_client()
         resp = client.get("/api/health")
@@ -41,8 +38,6 @@ class TestHealthEndpoints:
 
 
 class TestSettingsEndpoints:
-    """设置管理端点（从 routes_settings.py）"""
-
     def test_get_settings(self):
         client = _create_test_client()
         resp = client.get("/api/settings")
@@ -62,8 +57,6 @@ class TestSettingsEndpoints:
 
 
 class TestUpdateEndpoints:
-    """更新系统端点（从 routes_update.py）"""
-
     def test_get_version(self):
         client = _create_test_client()
         resp = client.get("/api/system/version")
@@ -80,8 +73,6 @@ class TestUpdateEndpoints:
 
 
 class TestModelSwitchEndpoints:
-    """模型切换端点（从 routes_model_switch.py）"""
-
     def test_switch_status(self):
         client = _create_test_client()
         resp = client.get("/api/system/switch_status")
@@ -96,8 +87,6 @@ class TestModelSwitchEndpoints:
 
 
 class TestAgentWorkspaceEndpoints:
-    """工作台端点（从 routes_agent_workspace.py）"""
-
     def test_workspace_path(self):
         client = _create_test_client()
         resp = client.get("/api/workspace/path")
@@ -125,8 +114,6 @@ class TestAgentWorkspaceEndpoints:
 
 
 class TestAgentEndpoints:
-    """Agent 核心端点（从 routes_agent.py）"""
-
     def test_list_tools(self):
         client = _create_test_client()
         resp = client.get("/api/agent/tools")
@@ -142,8 +129,6 @@ class TestAgentEndpoints:
 
 
 class TestAgentMemoryEndpoints:
-    """记忆系统端点（从 routes_agent_memory.py）"""
-
     def test_memory_status(self):
         client = _create_test_client()
         resp = client.get("/api/agent/memory/status")
@@ -156,8 +141,6 @@ class TestAgentMemoryEndpoints:
 
 
 class TestMCPEndpoints:
-    """MCP 服务器端点（从 routes_agent_mcp.py）"""
-
     def test_mcp_installed(self):
         client = _create_test_client()
         resp = client.get("/api/mcp/installed")

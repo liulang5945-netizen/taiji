@@ -343,16 +343,30 @@ def _parse_doc(file_path: str) -> str:
 
 # ======================== HTML ========================
 
+def _html_to_text_regex(html: str) -> str:
+    """HTML 转纯文本（纯 regex，无外部依赖）"""
+    import re
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<header[^>]*>.*?</header>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<aside[^>]*>.*?</aside>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<(?:br|p|div|h[1-6]|li|tr|blockquote)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(?:p|div|h[1-6]|li|tr|blockquote)>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def _parse_html(file_path: str) -> str:
     try:
-        from bs4 import BeautifulSoup
-        with open(file_path, "r", encoding="utf-8") as f:
-            soup = BeautifulSoup(f.read(), "html.parser")
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            tag.decompose()
         import re
-        return re.sub(r'\n{3,}', '\n\n', soup.get_text(separator="\n", strip=True))
-    except (ImportError, Exception) as e:
+        with open(file_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        return re.sub(r'\n{3,}', '\n\n', _html_to_text_regex(html))
+    except Exception as e:
         logger.error(f"读取 HTML 失败: {e}")
         return _parse_text(file_path)
 
@@ -362,12 +376,11 @@ def _parse_html(file_path: str) -> str:
 def _parse_epub(file_path: str) -> str:
     try:
         from ebooklib import epub
-        from bs4 import BeautifulSoup
         book = epub.read_epub(file_path)
         chapters = []
         for item in book.get_items_of_type(9):
-            soup = BeautifulSoup(item.get_content(), "html.parser")
-            text = soup.get_text(separator="\n", strip=True)
+            html = item.get_content().decode('utf-8', errors='ignore')
+            text = _html_to_text_regex(html)
             if text:
                 chapters.append(text)
         return "\n\n".join(chapters)
@@ -381,10 +394,6 @@ def _parse_epub(file_path: str) -> str:
 def _parse_epub_fallback(file_path: str) -> str:
     import zipfile, re
     try:
-        from bs4 import BeautifulSoup
-    except ImportError:
-        return ""
-    try:
         with zipfile.ZipFile(file_path, "r") as zf:
             html_files = [n for n in zf.namelist()
                           if n.endswith(('.html', '.xhtml', '.htm'))
@@ -393,8 +402,7 @@ def _parse_epub_fallback(file_path: str) -> str:
             for name in sorted(html_files):
                 try:
                     content = zf.read(name).decode("utf-8")
-                    soup = BeautifulSoup(content, "html.parser")
-                    text = soup.get_text(separator="\n", strip=True)
+                    text = _html_to_text_regex(content)
                     if text:
                         chapters.append(re.sub(r'\n{3,}', '\n\n', text))
                 except Exception:
@@ -523,10 +531,12 @@ def _parse_xml(file_path: str) -> str:
 
         lines = _extract_text(root)
         if not lines:
-            from bs4 import BeautifulSoup
+            import re
             with open(file_path, "r", encoding="utf-8") as f:
-                soup = BeautifulSoup(f.read(), "xml")
-            return soup.get_text(separator="\n", strip=True)
+                xml_content = f.read()
+            text = re.sub(r'<[^>]+>', ' ', xml_content)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
         return "\n".join(lines)
     except (ImportError, Exception):
         return _parse_text(file_path)

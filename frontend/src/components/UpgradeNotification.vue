@@ -88,7 +88,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { API_BASE } from '@/composables/useApi.js'
+import { API_BASE, authFetch } from '@/composables/apiClient.js'
 
 const visible = ref(false)
 const suggestion = ref({})
@@ -117,7 +117,7 @@ function shouldShow() {
 // 检查升级建议
 async function checkUpgrade() {
   try {
-    const resp = await fetch(`${API_BASE}/api/taiji_model/upgrade_check`)
+    const resp = await authFetch(`${API_BASE}/api/taiji_model/upgrade_check`)
     if (!resp.ok) return
     const data = await resp.json()
 
@@ -137,7 +137,7 @@ async function startUpgrade() {
   progressMessage.value = '正在准备升级...'
 
   try {
-    const resp = await fetch(`${API_BASE}/api/taiji_model/upgrade`, { method: 'POST' })
+    const resp = await authFetch(`${API_BASE}/api/taiji_model/upgrade`, { method: 'POST' })
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}))
       throw new Error(err.detail || `HTTP ${resp.status}`)
@@ -146,7 +146,7 @@ async function startUpgrade() {
     // 开始轮询进度
     pollTimer = setInterval(async () => {
       try {
-        const progResp = await fetch(`${API_BASE}/api/taiji_model/upgrade_progress`)
+        const progResp = await authFetch(`${API_BASE}/api/taiji_model/upgrade_progress`)
         if (!progResp.ok) return
         const progData = await progResp.json()
 

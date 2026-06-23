@@ -16,7 +16,7 @@
 
 a {
   text-decoration: none;
-  color: #6366f1;
+  color: var(--primary);
   transition: 0.2s;
 }
 
@@ -62,7 +62,7 @@ body {
   width: 100vw;
   overflow: hidden;
   position: relative;
-  background: linear-gradient(135deg, #0a0e1a 0%, #0d1117 40%, #111827 100%);
+  background: var(--bg);
 }
 
 /* 动态粒子背景层 */
@@ -71,9 +71,9 @@ body {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 30%, rgba(245,158,11,0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(99,102,241,0.04) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 50%, rgba(124,138,255,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 30%, rgba(167,139,250,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(124,138,255,0.03) 0%, transparent 50%);
   pointer-events: none;
   z-index: 0;
   animation: taijiBreathe 8s ease-in-out infinite;
@@ -143,7 +143,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0a0e1a 0%, #1e293b 50%, #0a0e1a 100%);
+  background: linear-gradient(135deg, #0e1220 0%, #1a2038 50%, #0e1220 100%);
   border: 2px solid rgba(99,102,241,0.3);
   border-radius: 50%;
   color: var(--taiji-light);

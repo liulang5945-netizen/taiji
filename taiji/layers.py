@@ -86,7 +86,7 @@ class GroupedQueryAttention(nn.Module):
     """GQA — 分组查询注意力，省显存效果好"""
 
     def __init__(self, hidden_size: int, num_heads: int, num_kv_heads: int,
-                 dropout: float = 0.0):
+                 dropout: float = 0.0, bias: bool = False):
         super().__init__()
         self.num_heads = num_heads
         self.num_kv_heads = num_kv_heads
@@ -94,9 +94,9 @@ class GroupedQueryAttention(nn.Module):
         self.num_queries_per_kv = num_heads // num_kv_heads
         self.scale = self.head_dim ** -0.5
 
-        self.wq = nn.Linear(hidden_size, num_heads * self.head_dim, bias=False)
-        self.wk = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
-        self.wv = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=False)
+        self.wq = nn.Linear(hidden_size, num_heads * self.head_dim, bias=bias)
+        self.wk = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=bias)
+        self.wv = nn.Linear(hidden_size, num_kv_heads * self.head_dim, bias=bias)
         self.wo = nn.Linear(num_heads * self.head_dim, hidden_size, bias=False)
 
         self.rope = RotaryEmbedding(self.head_dim)
@@ -175,9 +175,9 @@ class TransformerBlock(nn.Module):
     """Pre-Norm Transformer 块"""
 
     def __init__(self, hidden_size: int, num_heads: int, num_kv_heads: int,
-                 intermediate_size: int, rms_norm_eps: float = 1e-5):
+                 intermediate_size: int, rms_norm_eps: float = 1e-5, bias: bool = False):
         super().__init__()
-        self.attention = GroupedQueryAttention(hidden_size, num_heads, num_kv_heads)
+        self.attention = GroupedQueryAttention(hidden_size, num_heads, num_kv_heads, bias=bias)
         self.attention_norm = RMSNorm(hidden_size, rms_norm_eps)
         self.feed_forward = SwiGLU(hidden_size, intermediate_size)
         self.ffn_norm = RMSNorm(hidden_size, rms_norm_eps)

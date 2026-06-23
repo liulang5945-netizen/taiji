@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 from taiji.core.utils import get_external_path
 
@@ -81,8 +81,20 @@ def get_system_hardware():
 # ======================== 系统操作 ========================
 
 @router.post("/api/system/restart")
-def restart_system():
-    """接收前端发来的重启指令"""
+def restart_system(request: Request):
+    """接收前端发来的重启指令 — 需要认证（认证启用时）"""
+    from taiji.core.security import AuthManager
+    auth = AuthManager()
+
+    if auth.enabled:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="缺少认证 Token")
+        token = auth_header[7:]
+        payload = auth.verify_token(token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
     import subprocess
     import time
 

@@ -73,9 +73,10 @@ async def sleep_taiji(reason: str = "manual"):
         from taiji.life.sleep_engine import get_sleep_engine
         engine = get_sleep_engine()
         report = engine.sleep(reason=reason)
+        loss_str = f"{report.training_loss:.4f}" if report.training_loss is not None else "N/A"
         return LifeActionResponse(
             success=True,
-            message=f"睡眠完成: {report.phases_completed} 阶段, loss={report.training_loss:.4f}",
+            message=f"睡眠完成: {report.phases_completed} 阶段, loss={loss_str}",
             data={
                 "phases": report.phases_completed,
                 "training_loss": report.training_loss,

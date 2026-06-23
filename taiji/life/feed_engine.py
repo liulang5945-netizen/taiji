@@ -102,7 +102,7 @@ class FeedEngine:
         self._last_feed_time: Optional[datetime] = None
         self._on_feed_complete: Optional[Callable] = None
 
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_history()
 
         logger.info(f"FeedEngine initialized: auto={self.config.auto_feed_enabled}")
@@ -588,8 +588,15 @@ class FeedEngine:
 
     # ─── 持久化 ─────────────────────────────────────
 
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _append_samples(self, samples: List[dict]):
         """追加训练样本到待消化队列"""
+        self._ensure_data_dir()
         samples_path = os.path.join(self.data_dir, "pending_samples.jsonl")
         with open(samples_path, "a", encoding="utf-8") as f:
             for sample in samples:

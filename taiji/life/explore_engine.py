@@ -80,7 +80,7 @@ class ExploreEngine:
         self._last_explore_time: Optional[datetime] = None
         self._is_exploring = False
 
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_history()
 
         logger.info("ExploreEngine initialized")
@@ -263,6 +263,12 @@ class ExploreEngine:
             logger.debug(f"Read page failed: {e}")
         return None
 
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _store_knowledge(self, topic: str, url: str, content: str) -> bool:
         """将知识存入知识库"""
         # 去重
@@ -270,6 +276,7 @@ class ExploreEngine:
         if content_hash in self._content_hashes:
             return False
 
+        self._ensure_data_dir()
         try:
             knowledge_dir = os.path.join(self.data_dir, "discoveries")
             os.makedirs(knowledge_dir, exist_ok=True)

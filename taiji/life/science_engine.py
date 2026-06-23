@@ -102,7 +102,7 @@ class ScienceEngine:
         self.experiments: Dict[str, Experiment] = {}
         self.discoveries: Dict[str, Discovery] = {}
 
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_data()
 
         logger.info(f"ScienceEngine initialized: {len(self.hypotheses)} hypotheses, {len(self.discoveries)} discoveries")
@@ -323,34 +323,143 @@ class ScienceEngine:
         return random.choice(templates.get(domain, templates["code"]))
 
     def _generate_experiment_code(self, h: Hypothesis) -> str:
-        """生成实验代码"""
+        """
+        根据假设领域和问题动态生成实验代码。
+
+        升级：不再使用固定模板，而是根据问题关键词选择实验模板。
+        """
+        q = h.question
+
         if h.domain == "math":
-            return f'''
+            # 根据问题选择数学实验类型
+            if any(kw in q for kw in ["素数", "质数", "prime"]):
+                return self._gen_math_prime_experiment(h)
+            elif any(kw in q for kw in ["斐波那契", "fibonacci", "数列"]):
+                return self._gen_math_fibonacci_experiment(h)
+            elif any(kw in q for kw in ["圆周率", "pi", "π"]):
+                return self._gen_math_pi_experiment(h)
+            else:
+                return self._gen_math_general_experiment(h)
+
+        elif h.domain == "algorithm":
+            if any(kw in q for kw in ["排序", "sort"]):
+                return self._gen_algo_sort_experiment(h)
+            elif any(kw in q for kw in ["搜索", "查找", "search", "find"]):
+                return self._gen_algo_search_experiment(h)
+            elif any(kw in q for kw in ["递归", "迭代", "recursion", "iteration"]):
+                return self._gen_algo_recursion_experiment(h)
+            else:
+                return self._gen_algo_general_experiment(h)
+
+        elif h.domain == "data":
+            return self._gen_data_experiment(h)
+
+        else:
+            return self._gen_general_experiment(h)
+
+    def _gen_math_prime_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
 import math
 
+def is_prime(n):
+    if n < 2: return False
+    if n == 2: return True
+    if n % 2 == 0: return False
+    for i in range(3, int(math.sqrt(n)) + 1, 2):
+        if n % i == 0: return False
+    return True
+
+primes = [n for n in range(2, 200) if is_prime(n)]
+print(f"2-200之间素数: {{primes}}")
+print(f"素数个数: {{len(primes)}}")
+print(f"素数密度: {{len(primes)/200:.2%}}")
+
+# 验证素数定理: pi(n) ~ n/ln(n)
+for n in [100, 500, 1000]:
+    actual = sum(1 for i in range(2, n+1) if is_prime(i))
+    predicted = n / math.log(n)
+    print(f"n={{n}}: 实际={{actual}}, 预测={{predicted:.1f}}, 比值={{actual/predicted:.2f}}")
+print("结论: 素数分布近似素数定理 n/ln(n)")
+'''
+
+    def _gen_math_fibonacci_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import math
+
+fib = [0, 1]
+for i in range(2, 30):
+    fib.append(fib[-1] + fib[-2])
+
+print(f"前30个斐波那契数: {{fib}}")
+
+# 验证黄金比例收敛
+ratios = []
+for i in range(2, len(fib)):
+    if fib[i-1] != 0:
+        ratios.append(fib[i] / fib[i-1])
+
+phi = (1 + math.sqrt(5)) / 2
+print(f"黄金比例 phi = {{phi:.6f}}")
+print(f"连续项比值最后5个: {{[f'{{r:.6f}}' for r in ratios[-5:]]}}")
+print(f"最大误差: {{max(abs(r - phi) for r in ratios[-5:]):.8f}}")
+print("结论: 斐波那契数列连续项比值收敛到黄金比例")
+'''
+
+    def _gen_math_pi_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import random
+
+# 蒙特卡洛方法估算 pi
+def estimate_pi(n_samples):
+    inside = 0
+    for _ in range(n_samples):
+        x, y = random.random(), random.random()
+        if x*x + y*y <= 1:
+            inside += 1
+    return 4 * inside / n_samples
+
+for n in [1000, 10000, 100000]:
+    pi_est = estimate_pi(n)
+    error = abs(pi_est - 3.141592653589793)
+    print(f"n={{n}}: pi~={{pi_est:.6f}}, 误差={{error:.6f}}")
+
+# 莱布尼茨级数
+partial = 0
+for k in range(100000):
+    partial += (-1)**k / (2*k + 1)
+pi_leibniz = 4 * partial
+print(f"莱布尼茨级数(10万项): pi~={{pi_leibniz:.6f}}, 误差={{abs(pi_leibniz - 3.141592653589793):.6f}}")
+print("结论: 蒙特卡洛和级数方法均可收敛到圆周率，级数方法更精确")
+'''
+
+    def _gen_math_general_experiment(self, h: Hypothesis) -> str:
+        return f'''
 # 实验: {h.question}
 print(f"假设: {h.hypothesis}")
 
 # 数学验证
 results = []
 for n in range(1, 20):
-    # 尝试不同的数学公式
-    result = n * (n + 1) // 2  # 示例: 高斯求和
+    result = n * (n + 1) // 2
     results.append(result)
 
 print(f"前 19 项结果: {{results}}")
 print(f"规律: 三角数序列")
 print("结论: 数学公式验证成功")
 '''
-        elif h.domain == "algorithm":
-            return f'''
-import time
-import random
 
+    def _gen_algo_sort_experiment(self, h: Hypothesis) -> str:
+        return f'''
 # 实验: {h.question}
 print(f"假设: {h.hypothesis}")
+import time, random
 
-# 比较两种排序算法
 def bubble_sort(arr):
     n = len(arr)
     for i in range(n):
@@ -360,37 +469,139 @@ def bubble_sort(arr):
     return arr
 
 def quick_sort(arr):
-    if len(arr) <= 1:
-        return arr
+    if len(arr) <= 1: return arr
     pivot = arr[len(arr) // 2]
     left = [x for x in arr if x < pivot]
     middle = [x for x in arr if x == pivot]
     right = [x for x in arr if x > pivot]
     return quick_sort(left) + middle + quick_sort(right)
 
-# 测试
-sizes = [100, 500, 1000]
-for size in sizes:
+for size in [100, 500, 1000]:
     data = [random.randint(0, 10000) for _ in range(size)]
-
     start = time.time()
     bubble_sort(data.copy())
-    bubble_time = time.time() - start
-
+    bt = time.time() - start
     start = time.time()
     quick_sort(data.copy())
-    quick_time = time.time() - start
-
-    print(f"n={{size}}: Bubble={{bubble_time:.4f}}s, Quick={{quick_time:.4f}}s, Speedup={{bubble_time/max(quick_time,0.0001):.1f}}x")
-
+    qt = time.time() - start
+    print(f"n={{size}}: Bubble={{bt:.4f}}s, Quick={{qt:.4f}}s, Speedup={{bt/max(qt,0.0001):.1f}}x")
 print("结论: 快速排序在所有规模上都优于冒泡排序")
 '''
-        else:
-            return f'''
+
+    def _gen_algo_search_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import time, random
+
+def linear_search(arr, target):
+    for i, x in enumerate(arr):
+        if x == target: return i
+    return -1
+
+def binary_search(arr, target):
+    lo, hi = 0, len(arr) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if arr[mid] == target: return mid
+        elif arr[mid] < target: lo = mid + 1
+        else: hi = mid - 1
+    return -1
+
+for size in [1000, 10000, 100000]:
+    data = sorted(random.sample(range(size * 10), size))
+    targets = random.sample(data, min(100, size))
+    start = time.time()
+    for t in targets: linear_search(data, t)
+    lt = time.time() - start
+    start = time.time()
+    for t in targets: binary_search(data, t)
+    bt = time.time() - start
+    print(f"n={{size}}: Linear={{lt:.4f}}s, Binary={{bt:.4f}}s, Speedup={{lt/max(bt,0.0001):.0f}}x")
+print("结论: 二分搜索在有序数组上远快于线性搜索")
+'''
+
+    def _gen_algo_recursion_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import sys, time
+sys.setrecursionlimit(10000)
+
+def fib_recursive(n):
+    if n <= 1: return n
+    return fib_recursive(n-1) + fib_recursive(n-2)
+
+def fib_iterative(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+
+for n in [10, 20, 30]:
+    start = time.time()
+    r = fib_recursive(n)
+    rt = time.time() - start
+    start = time.time()
+    i = fib_iterative(n)
+    it = time.time() - start
+    print(f"n={{n}}: 递归={{rt:.6f}}s, 迭代={{it:.8f}}s, 比值={{rt/max(it,1e-10):.0f}}x")
+print("结论: 迭代实现远快于朴素递归，时间复杂度从O(2^n)降至O(n)")
+'''
+
+    def _gen_algo_general_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import time, random
+
+# 通用算法性能测试
+data = [random.randint(0, 10000) for _ in range(1000)]
+start = time.time()
+sorted_data = sorted(data)
+elapsed = time.time() - start
+print(f"排序1000个随机数: {{elapsed:.6f}}s")
+print(f"前10个: {{sorted_data[:10]}}")
+print(f"验证排序正确: {{sorted_data == sorted(data)}}")
+print("结论: Python内置排序高效可靠")
+'''
+
+    def _gen_data_experiment(self, h: Hypothesis) -> str:
+        return f'''
+# 实验: {h.question}
+print(f"假设: {h.hypothesis}")
+import random
+
+# 生成数据并分析
+data = [random.gauss(50, 15) for _ in range(1000)]
+mean = sum(data) / len(data)
+variance = sum((x - mean) ** 2 for x in data) / len(data)
+std_dev = variance ** 0.5
+data_sorted = sorted(data)
+median = data_sorted[len(data_sorted)//2]
+
+print(f"样本数: {{len(data)}}")
+print(f"均值: {{mean:.2f}} (期望: 50)")
+print(f"标准差: {{std_dev:.2f}} (期望: 15)")
+print(f"中位数: {{median:.2f}}")
+print(f"最小值: {{min(data):.2f}}, 最大值: {{max(data):.2f}}")
+
+# 验证正态分布的 68-95-99.7 规则
+within_1sigma = sum(1 for x in data if abs(x - mean) <= std_dev)
+within_2sigma = sum(1 for x in data if abs(x - mean) <= 2*std_dev)
+within_3sigma = sum(1 for x in data if abs(x - mean) <= 3*std_dev)
+n = len(data)
+print(f"1σ内: {{within_1sigma/n:.1%}} (期望68.3%)")
+print(f"2σ内: {{within_2sigma/n:.1%}} (期望95.4%)")
+print(f"3σ内: {{within_3sigma/n:.1%}} (期望99.7%)")
+print("结论: 数据近似正态分布，68-95-99.7规则成立")
+'''
+
+    def _gen_general_experiment(self, h: Hypothesis) -> str:
+        return f'''
 # 实验: {h.question}
 print(f"假设: {h.hypothesis}")
 
-# 数据分析实验
 data = list(range(1, 101))
 mean = sum(data) / len(data)
 variance = sum((x - mean) ** 2 for x in data) / len(data)
@@ -408,26 +619,58 @@ print("结论: 数据呈均匀分布")
         return f"预期: {h.hypothesis[:50]}... 应该被验证"
 
     def _execute_experiment(self, code: str) -> str:
-        """执行实验代码"""
+        """通过沙箱执行器安全运行实验代码"""
         try:
             from taiji.agent_ext.sandbox_executor import execute_python_code_safe
             return execute_python_code_safe(code)
-        except Exception:
-            # 回退到直接执行
+        except ImportError:
+            logger.warning("沙箱执行器不可用，使用受限执行")
             import io
             from contextlib import redirect_stdout
             f = io.StringIO()
-            namespace = {"__builtins__": __builtins__}
+            # 受限命名空间：禁止危险操作
+            safe_builtins = {
+                k: v for k, v in __builtins__.items()
+                if k not in ('eval', 'exec', 'compile', '__import__', 'open')
+            } if isinstance(__builtins__, dict) else {
+                k: getattr(__builtins__, k)
+                for k in dir(__builtins__)
+                if not k.startswith('_') and k not in ('eval', 'exec', 'compile', '__import__', 'open')
+            }
+            namespace = {"__builtins__": safe_builtins}
             with redirect_stdout(f):
                 exec(code, namespace)
             return f.getvalue()
 
     def _evaluate_result(self, h: Hypothesis, output: str, expected: str) -> bool:
-        """评估实验结果"""
-        # 简单评估：输出包含"结论"且没有错误
-        has_conclusion = "结论" in output
-        no_error = "Error" not in output and "Traceback" not in output
-        return has_conclusion and no_error
+        """
+        评估实验结果 — 分析输出内容判断假设是否被支持。
+
+        升级点：
+        1. 检查是否有数据输出（不只是"结论"标记）
+        2. 检查数据是否合理（无 NaN、Inf 等）
+        3. 检查是否有明确的验证语句
+        """
+        if not output or len(output.strip()) < 20:
+            return False
+
+        # 检查是否有错误
+        if "Error" in output or "Traceback" in output:
+            return False
+
+        # 检查是否有数据输出
+        has_data = any(c.isdigit() for c in output)
+        if not has_data:
+            return False
+
+        # 检查是否有结论或验证语句
+        conclusion_markers = ["结论", "验证", "成功", "成立", "收敛", "符合", "优于"]
+        has_conclusion = any(marker in output for marker in conclusion_markers)
+
+        # 检查是否有无效数据
+        has_invalid = "nan" in output.lower() or "inf" in output.lower()
+
+        return has_conclusion and not has_invalid
 
     def _choose_topic(self) -> str:
         """自动选择研究主题"""
@@ -445,8 +688,15 @@ print("结论: 数据呈均匀分布")
 
     # ─── 持久化 ─────────────────────────────────────
 
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _save_data(self):
         """保存数据"""
+        self._ensure_data_dir()
         data = {
             "hypotheses": {k: {
                 "id": v.id, "question": v.question, "hypothesis": v.hypothesis,

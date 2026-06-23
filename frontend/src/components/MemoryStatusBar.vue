@@ -12,13 +12,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { API_BASE } from '../composables/useApi.js'
+import { useRuntimeStore } from '../stores/runtimeStore.js'
 
 const props = defineProps({
   pollInterval: { type: Number, default: 5000 },
 })
 
 const emit = defineEmits(['memory-warning'])
+const runtimeStore = useRuntimeStore()
 
 const memoryData = ref(null)
 const errorCount = ref(0)
@@ -55,9 +56,8 @@ const tooltipText = computed(() => {
 
 async function fetchMemory() {
   try {
-    const resp = await fetch(`${API_BASE}/api/system/memory`)
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    const data = await resp.json()
+    const data = await runtimeStore.refreshMemory()
+    if (!data) throw new Error('memory unavailable')
     if (data.status === 'ok') {
       memoryData.value = data
       errorCount.value = 0

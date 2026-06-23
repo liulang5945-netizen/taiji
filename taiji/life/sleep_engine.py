@@ -13,6 +13,7 @@ Phase 1 (浅睡眠): 记忆整理 — 清理 WorkingMemory
 Phase 2 (深睡眠): 模型训练 — 用收集的数据在线微调
 Phase 3 (REM): 知识整合 — 进化引擎 + 用户画像更新
 Phase 4 (清醒): 自我评估 — 检查模型健康状态
+Phase 5 (梦境): 进化语料生成 — 态极生成下一代训练数据（递归蒸馏）
 """
 import os
 import json
@@ -95,7 +96,7 @@ class SleepEngine:
         self._auto_sleep_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_history()
         
         logger.info(f"SleepEngine initialized: auto={self.config.auto_sleep_enabled}, interval={self.config.sleep_interval_hours}h")
@@ -159,6 +160,14 @@ class SleepEngine:
             logger.info("  Phase 4: Evaluation ✅")
         except Exception as e:
             logger.warning(f"  Phase 4 failed: {e}")
+
+        # Phase 5: 梦境 — 递归改进（策略优化 + 进化语料生成）
+        try:
+            self._sleep_phase_recursive_improvement(report)
+            report.phases_completed.append("recursive_improvement")
+            logger.info("  Phase 5: Recursive improvement ✅")
+        except Exception as e:
+            logger.warning(f"  Phase 5 failed: {e}")
         
         # 计算睡眠时长
         report.duration_seconds = round(time.time() - start_time, 1)
@@ -338,7 +347,7 @@ class SleepEngine:
         执行睡眠训练：在线微调态极 ModelSelf 模型
 
         直接使用 PyTorch 进行轻量级微调，限制步数以控制睡眠时长。
-        通过注入的 model_provider/tokenizer_provider 获取模型，不依赖 core.app_state。
+        通过注入的 model_provider/tokenizer_provider 获取模型。
         """
         import torch
         import torch.nn.functional as F
@@ -346,29 +355,38 @@ class SleepEngine:
         try:
             # 获取训练锁，避免与其他训练进程并发操作同一模型
             try:
-                from core.app_state import app_state
+                from taiji.core.app_state import app_state
                 _app_state = app_state
-                if not app_state.try_start_training():
-                    logger.info("  其他训练正在进行，跳过睡眠训练以避免权重冲突")
-                    return None
+                if hasattr(app_state, 'try_start_training'):
+                    if not app_state.try_start_training():
+                        logger.info("  其他训练正在进行，跳过睡眠训练以避免权重冲突")
+                        return None
             except ImportError:
-                pass
+                logger.debug("  taiji.core.app_state 不可用")
+            except Exception as e:
+                logger.debug(f"  训练锁获取失败: {e}")
 
             # 优先使用注入的 provider（解耦 core.app_state）
             model = None
             tokenizer = None
             if self._model_provider:
-                model = self._model_provider()
+                try:
+                    model = self._model_provider()
+                except Exception as e:
+                    logger.debug(f"  model_provider 调用失败: {e}")
             if self._tokenizer_provider:
-                tokenizer = self._tokenizer_provider()
+                try:
+                    tokenizer = self._tokenizer_provider()
+                except Exception as e:
+                    logger.debug(f"  tokenizer_provider 调用失败: {e}")
 
-            # 回退：尝试从 core.app_state 获取（向后兼容）
+            # 回退：尝试从 taiji.core.app_state 获取
             if model is None or tokenizer is None:
                 try:
-                    from core.app_state import app_state
-                    if model is None:
+                    from taiji.core.app_state import app_state
+                    if model is None and hasattr(app_state, 'model'):
                         model = app_state.model
-                    if tokenizer is None:
+                    if tokenizer is None and hasattr(app_state, 'tokenizer'):
                         tokenizer = app_state.tokenizer
                 except ImportError:
                     pass
@@ -376,13 +394,13 @@ class SleepEngine:
             if model is None or tokenizer is None:
                 logger.info("  No model available, skipping training")
                 return None
-            
+
             # 判断是否为态极模型
             from taiji.architecture import ModelSelf
             if not isinstance(model, ModelSelf):
                 logger.info("  Current model is not ModelSelf, skipping sleep training")
                 return None
-            
+
             # 合并训练数据
             all_texts = []
             for item in react_data:
@@ -394,80 +412,87 @@ class SleepEngine:
                     text = " ".join(m.get("content", "") for m in item["messages"] if m.get("role") != "system")
                     if text.strip():
                         all_texts.append(text)
-            
+
             if not all_texts:
                 logger.info("  No valid training texts, skipping")
                 return None
-            
+
             # 限制训练步数（睡眠时轻量训练）
             max_steps = min(self.config.max_training_steps, len(all_texts))
             device = next(model.parameters()).device
-            
+
             # 创建优化器（睡眠时用较小学习率，避免灾难性遗忘）
             optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.01)
-            # 彻底清除梯度和残留计算图，防止 inplace 操作冲突
-            # （lm_head.weight 与 embedding.weight 绑定，optimizer.step() 的 inplace
-            #   更新会破坏旧计算图，导致 "version mismatch" 错误）
             optimizer.zero_grad(set_to_none=True)
             model.zero_grad(set_to_none=True)
-            # 确保没有残留的 KV cache 干扰
             if hasattr(model, '_kv_cache'):
                 model._kv_cache = None
-            # 清除 GPU 缓存，释放残留张量
             if device.type == 'cuda':
                 torch.cuda.empty_cache()
             model.train()
 
             logger.info(f"  Starting sleep training: {max_steps} steps on {device}")
-            
+
             final_loss = None
             step_count = 0
-            
+            loss_history = []
+
             for i in range(max_steps):
                 text = all_texts[i % len(all_texts)]
-                
+
                 # 编码
                 ids = tokenizer.encode(text)
                 if len(ids) < 5:
                     continue
-                ids = ids[:512]  # 截断
-                
+                ids = ids[:512]
+
                 # 构建 input_ids 和 labels（自回归）
                 input_ids = torch.tensor([ids], dtype=torch.long, device=device)
                 labels = input_ids.clone()
-                
+
                 # 前向
                 output = model(input_ids, targets=labels)
                 loss = output.loss
-                
+
                 if loss is None or loss.item() == 0:
                     continue
-                
+
                 # 反向
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
-                
+
                 final_loss = loss.item()
+                loss_history.append(final_loss)
                 step_count += 1
-                
+
                 if step_count % 10 == 0:
                     logger.info(f"  Sleep training step {step_count}/{max_steps}, loss={final_loss:.4f}")
-            
+
+                # 早停：如果 loss 连续 5 步上升，停止训练（防止灾难性遗忘）
+                if len(loss_history) >= 7:
+                    recent = loss_history[-5:]
+                    if all(recent[j] > recent[j-1] for j in range(1, len(recent))):
+                        logger.info(f"  早停：loss 连续上升，step={step_count}")
+                        break
+
             model.eval()
-            
-            # 训练后保存 checkpoint（保存到 model_name 的父目录，与微调路径一致）
+
+            # 训练后验证：简单对话测试
+            if final_loss is not None:
+                self._validate_training_effect(model, tokenizer, device, final_loss, loss_history)
+
+            # 训练后保存 checkpoint
             if self.config.save_checkpoints and final_loss is not None:
                 try:
                     from taiji.loader import save_model
-                    # 优先保存到当前模型所在目录，确保重启后自动加载
                     checkpoint_dir = None
                     try:
-                        from core.app_state import app_state
+                        from taiji.core.app_state import app_state
                         model_path = getattr(app_state, "_loaded_model_name", "") or ""
                         if model_path and os.path.isdir(model_path):
-                            checkpoint_dir = model_path  # 直接覆盖当前 best
+                            checkpoint_dir = model_path
                     except Exception:
                         pass
                     if not checkpoint_dir:
@@ -477,19 +502,51 @@ class SleepEngine:
                     logger.info(f"  Checkpoint saved to {checkpoint_dir}")
                 except Exception as e:
                     logger.warning(f"  Checkpoint save failed: {e}")
-            
+
             return final_loss
 
         except Exception as e:
             logger.warning(f"  Sleep training failed: {e}")
             return None
         finally:
-            # 释放训练锁
             if _app_state is not None:
                 try:
-                    _app_state.finish_training()
+                    if hasattr(_app_state, 'finish_training'):
+                        _app_state.finish_training()
                 except Exception:
                     pass
+
+    def _validate_training_effect(self, model, tokenizer, device,
+                                   final_loss: float, loss_history: list):
+        """
+        训练后验证：检查是否发生灾难性遗忘。
+
+        1. 检查 loss 是否从初始值下降
+        2. 尝试简单生成测试（如果 tokenizer 支持）
+        """
+        # 检查 loss 趋势
+        if len(loss_history) >= 2:
+            initial_loss = loss_history[0]
+            if final_loss > initial_loss * 2:
+                logger.warning(
+                    f"  ⚠️ 训练后 loss ({final_loss:.4f}) 比初始 ({initial_loss:.4f}) 高 2x 以上，"
+                    f"可能发生灾难性遗忘"
+                )
+            elif final_loss < initial_loss * 0.5:
+                logger.info(f"  ✅ 训练效果良好: loss {initial_loss:.4f} → {final_loss:.4f}")
+
+        # 简单生成测试
+        try:
+            test_prompt = "[用户] 你好\n[助手]"
+            ids = tokenizer.encode(test_prompt)
+            input_ids = torch.tensor([ids], dtype=torch.long, device=device)
+            with torch.no_grad():
+                output = model(input_ids)
+                logits = output.logits[:, -1, :]
+                top_tokens = torch.topk(logits, 5, dim=-1).indices[0].tolist()
+            logger.info(f"  训练后生成测试: top-5 token IDs = {top_tokens}")
+        except Exception as e:
+            logger.debug(f"  生成测试跳过: {e}")
     
     def _sleep_phase_knowledge_integration(self, report: SleepReport):
         """Phase 3: 知识整合 — 进化引擎 + 用户画像"""
@@ -561,11 +618,167 @@ class SleepEngine:
             
         except ImportError:
             return {"status": "unknown"}
-    
+
+    def _sleep_phase_recursive_improvement(self, report: SleepReport):
+        """
+        Phase 5: 递归改进 — 策略优化 + 进化语料生成
+
+        基于 Gödel Agent (ACL 2025) 的思想：
+        态极在睡眠时分析自己的行为策略，找出可以改进的地方。
+        同时生成下一代训练数据（递归蒸馏素材）。
+        """
+        try:
+            from taiji.life.recursive_improver import RecursiveImprover
+            improver = RecursiveImprover()
+
+            # 1. 分析策略并生成改进提案
+            proposals = improver.analyze_and_improve()
+            if proposals:
+                logger.info(f"  Generated {len(proposals)} improvement proposals")
+                for p in proposals:
+                    if p.confidence >= 0.7:
+                        report.recommendations.append(f"[改进] {p.description}")
+
+            # 2. 检查是否准备好进化（设计下一代）
+            try:
+                from taiji.life.evolution_engine import get_evolution_engine
+                engine = get_evolution_engine()
+                evolution_status = engine.check_evolution_ready()
+
+                if evolution_status["ready"]:
+                    logger.info(f"  Evolution ready: {evolution_status['reason']}")
+
+                    # 态极自主设计下一代（可能变大、变小、专业化、多模态）
+                    current_info = {
+                        "name": evolution_status["current_generation"],
+                        "params": "0.5B",  # TODO: 从实际模型获取
+                        "hidden_size": 896,
+                        "num_layers": 24,
+                        "num_attention_heads": 14,
+                        "weaknesses": self._identify_weaknesses(),
+                        "strengths": self._identify_strengths(),
+                        "resource_constraints": self._get_resource_constraints(),
+                    }
+                    next_gen_design = improver.design_next_generation(current_info)
+
+                    # 保存设计方案
+                    design_path = os.path.join(self.data_dir, "next_gen_design.json")
+                    with open(design_path, "w", encoding="utf-8") as f:
+                        json.dump(next_gen_design, f, indent=2, ensure_ascii=False)
+
+                    report.recommendations.append(
+                        f"[进化] 已设计下一代: {next_gen_design['next_gen_name']} "
+                        f"(方向: {next_gen_design['evolution_direction']})"
+                    )
+                    logger.info(f"  Next generation designed: {next_gen_design['next_gen_name']} "
+                               f"(direction: {next_gen_design['evolution_direction']})")
+            except ImportError:
+                logger.info("  EvolutionEngine not available for evolution check")
+
+            # 3. 生成进化语料（态极行为轨迹）
+            self._generate_evolution_corpus(report)
+
+        except ImportError:
+            logger.info("  RecursiveImprover not available, skipping")
+
+    def _identify_weaknesses(self) -> List[str]:
+        """识别当前模型的弱点"""
+        weaknesses = []
+        try:
+            from taiji.infra.self_evaluator import get_self_evaluator
+            evaluator = get_self_evaluator()
+            stats = evaluator.get_stats()
+            if stats.get("avg_score", 1.0) < 0.6:
+                weaknesses.append("整体回答质量偏低")
+        except ImportError:
+            pass
+
+        # 从进化引擎获取失败模式
+        try:
+            from taiji.life.evolution_engine import get_evolution_engine
+            engine = get_evolution_engine()
+            total = engine.metrics.tasks_completed + engine.metrics.tasks_failed
+            if total > 10:
+                fail_rate = engine.metrics.tasks_failed / total
+                if fail_rate > 0.3:
+                    weaknesses.append(f"任务失败率高 ({fail_rate:.0%})")
+        except ImportError:
+            pass
+
+        return weaknesses or ["信息不足，需要更多交互数据"]
+
+    def _identify_strengths(self) -> List[str]:
+        """识别当前模型的优势"""
+        return ["中文理解", "身份稳定", "本地运行"]
+
+    def _get_resource_constraints(self) -> dict:
+        """获取当前设备的资源约束"""
+        constraints = {"max_memory_gb": 16, "max_params": "7B"}
+        try:
+            import torch
+            if torch.cuda.is_available():
+                mem = torch.cuda.get_device_properties(0).total_mem / (1024**3)
+                constraints["max_memory_gb"] = round(mem * 0.8)  # 留 20% 余量
+                if mem < 8:
+                    constraints["max_params"] = "1.5B"
+                elif mem < 16:
+                    constraints["max_params"] = "3B"
+                elif mem < 24:
+                    constraints["max_params"] = "7B"
+                else:
+                    constraints["max_params"] = "14B"
+        except Exception:
+            pass
+        return constraints
+
+    def _generate_evolution_corpus(self, report: SleepReport):
+        """生成进化语料（态极行为轨迹）"""
+        try:
+            corpus_dir = os.path.join(self.data_dir, "evolution_corpus")
+            os.makedirs(corpus_dir, exist_ok=True)
+
+            # 从工作记忆中提取行为轨迹
+            from taiji.agent.working_memory import get_working_memory
+            wm = get_working_memory()
+            entries = wm.get_all()
+
+            if not entries:
+                logger.info("  No working memory entries for corpus generation")
+                return
+
+            # 生成行为样本
+            samples = []
+            for key, content in entries.items():
+                if isinstance(content, str) and len(content) > 20:
+                    samples.append({
+                        "type": "memory_consolidation",
+                        "key": key,
+                        "content": content,
+                        "timestamp": datetime.now().isoformat(),
+                    })
+
+            # 保存语料
+            if samples:
+                corpus_path = os.path.join(corpus_dir, f"corpus_{int(time.time())}.jsonl")
+                with open(corpus_path, "w", encoding="utf-8") as f:
+                    for s in samples:
+                        f.write(json.dumps(s, ensure_ascii=False) + "\n")
+                logger.info(f"  Generated {len(samples)} evolution corpus samples")
+
+        except Exception as e:
+            logger.debug(f"  Evolution corpus generation failed: {e}")
+
     # ─── 持久化 ─────────────────────────────────────
     
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _save_history(self):
         """保存睡眠历史"""
+        self._ensure_data_dir()
         path = os.path.join(self.data_dir, "sleep_history.json")
         try:
             data = []

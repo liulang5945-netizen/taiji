@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "servers": {
+    "playwright": {
+      "id": "playwright",
+      "name": "Playwright Browser Automation",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@playwright/mcp"
+      ],
+      "args_template": [],
+      "env": {},
+      "npm_package": "@playwright/mcp",
+      "description": "浏览器自动化（Playwright MCP）",
+      "icon": "🌐",
+      "category": "浏览器",
+      "enabled": true,
+      "auto_start": false
+    },
+    "fetch": {
+      "id": "fetch",
+      "name": "Web Fetch",
+      "command": "python",
+      "args": [
+        "-m",
+        "mcp_server_fetch"
+      ],
+      "args_template": [],
+      "env": {},
+      "npm_package": "mcp-server-fetch",
+      "description": "网页内容抓取（HTTP fetch）",
+      "icon": "📥",
+      "category": "网络",
+      "enabled": true,
+      "auto_start": false
+    }
+  }
+}

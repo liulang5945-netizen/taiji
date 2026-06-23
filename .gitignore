@@ -75,9 +75,33 @@ logs/
 
 # Test artifacts
 .pytest_cache/
+.pytest_cache*/
+pytest-cache-files-*/
 .coverage
 htmlcov/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Build artifacts
+frontend/dist/
+
+# Other tools
+.mimocode/
+.verify_pycache/
+update_code/
+update_frontend/
+
+# Vite logs
+vite-*.log
+
+# Large files and test data
+test_artifacts/
+*.zip
+tokenizer_native_v2/
+*.parquet
+*.jsonl
+
+# Temporary scripts
+scripts/download_*

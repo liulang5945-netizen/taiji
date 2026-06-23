@@ -213,8 +213,10 @@ class Orchestrator:
         """
         执行协作任务 — 真正调用 ReAct 引擎执行每个子任务。
 
-        每个子任务根据其角色（coder/researcher/planner/reviewer）
-        使用对应的 system_prompt 和 allowed_tools 调用 ReAct 引擎。
+        升级点：
+        1. 共享黑板（blackboard）：子任务间共享上下文
+        2. 依赖结果注入：前序子任务的结果自动注入到后续子任务的 prompt 中
+        3. 角色专属工具限制：每个角色只能使用自己的 allowed_tools
         """
         task = self._tasks.get(task_id)
         if not task:
@@ -222,6 +224,12 @@ class Orchestrator:
 
         task.status = "running"
         results = []
+
+        # 共享黑板：收集所有子任务的产出
+        blackboard = {
+            "original_task": task.original_task,
+            "completed_results": {},
+        }
 
         # 获取 ReAct 引擎
         react_engine = self._get_react_engine()
@@ -244,29 +252,38 @@ class Orchestrator:
             self.message_bus.publish("subtask_start", subtask.assigned_role,
                                     f"开始执行: {subtask.description[:100]}")
 
-            # 真正执行子任务
+            # 构建带上下文的 system_prompt（注入前序结果）
+            system_prompt = role.system_prompt if role else "你是一个AI助手。"
+            context_prompt = self._build_context_prompt(
+                system_prompt, subtask, blackboard, role
+            )
+
             try:
                 if react_engine:
-                    # 用 ReAct 引擎执行
-                    system_prompt = role.system_prompt if role else "你是一个AI助手。"
-                    full_prompt = f"{system_prompt}\n\n任务: {subtask.description}"
-
                     result = react_engine.run(
-                        task=subtask.description,
-                        system_prompt=system_prompt,
+                        task=context_prompt,
+                        system_prompt="",
                         max_steps=role.max_steps if role else 10,
+                        skill_tools=role.allowed_tools if role else None,
                     )
                     subtask.result = result.final_answer if result.final_answer else str(result)
                     subtask.status = "done" if not result.error else "failed"
                 else:
-                    # 没有 ReAct 引擎，用简单执行
                     subtask.result = self._simple_execute(subtask, role)
                     subtask.status = "done"
 
             except Exception as e:
-                logger.error(f"子任务执行失败: {e}")
+                logger.error(f"子任务 {subtask.id} 执行失败: {e}")
                 subtask.status = "failed"
                 subtask.result = f"执行失败: {str(e)}"
+
+            # 将结果写入黑板
+            if subtask.status == "done":
+                blackboard["completed_results"][subtask.id] = {
+                    "role": subtask.assigned_role,
+                    "description": subtask.description,
+                    "result": subtask.result[:500],
+                }
 
             self.message_bus.publish(
                 "subtask_done" if subtask.status == "done" else "subtask_failed",
@@ -291,7 +308,37 @@ class Orchestrator:
             "task_id": task_id,
             "subtasks_results": results,
             "final_result": task.final_result,
+            "blackboard_summary": {
+                "completed_count": len(blackboard["completed_results"]),
+                "roles_involved": list(set(
+                    v["role"] for v in blackboard["completed_results"].values()
+                )),
+            },
         }
+
+    def _build_context_prompt(self, system_prompt: str, subtask: SubTask,
+                               blackboard: dict, role: AgentRole) -> str:
+        """构建带前序上下文的 prompt"""
+        parts = [system_prompt, f"\n\n## 当前任务\n{subtask.description}"]
+
+        # 注入前序子任务结果
+        if blackboard["completed_results"]:
+            parts.append("\n\n## 前序任务结果（供参考）")
+            for st_id, st_result in blackboard["completed_results"].items():
+                parts.append(
+                    f"- [{st_result['role']}] {st_result['description'][:80]}: "
+                    f"{st_result['result'][:200]}"
+                )
+
+        # 注入原始任务描述
+        parts.append(f"\n\n## 原始任务\n{blackboard['original_task']}")
+
+        # 注入工具限制
+        if role and role.allowed_tools:
+            tools_str = ", ".join(role.allowed_tools)
+            parts.append(f"\n\n## 你可以使用的工具: {tools_str}")
+
+        return "\n".join(parts)
 
     def _get_react_engine(self):
         """获取 ReAct 引擎（延迟加载，避免循环依赖）"""

@@ -110,7 +110,7 @@ class PlayEngine:
         }
         self._last_play_time: Optional[datetime] = None
 
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_personality()
         self._load_history()
 
@@ -558,6 +558,12 @@ class PlayEngine:
                 self._personality["quirks"] = self._personality["quirks"][:10]
 
     # ─── 持久化 ─────────────────────────────────────
+
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
 
     def _save_personality(self):
         """保存个性档案"""

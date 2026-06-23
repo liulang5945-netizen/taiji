@@ -1,111 +1,102 @@
 <template>
-  <section class="workspace-view">
+  <div class="ide">
     <!-- 工具栏 -->
-    <div class="ws-toolbar">
-      <div class="ws-toolbar-left">
-        <h2 class="ws-title"><Laptop :size="16" class="ws-icon" /> {{ t('workspace') || '工作台' }}</h2>
-        <span class="ws-path" v-if="workspacePath">{{ workspacePath }}</span>
-        <button class="btn-ws btn-path-change" @click="openFolderPicker" title="切换项目路径"><FolderOpen :size="14" /></button>
+    <div class="ide-toolbar">
+      <div class="toolbar-left">
+        <Laptop :size="15" />
+        <span class="toolbar-title">工作台</span>
+        <span class="toolbar-path" v-if="workspacePath">{{ workspacePath }}</span>
+        <button class="tb-btn" @click="openFolderPicker" title="切换路径"><FolderOpen :size="13" /></button>
       </div>
-      <div class="ws-toolbar-right">
-        <button class="btn-ws" @click="refreshTree" title="刷新目录"><RefreshCw :size="14" /></button>
-        <button class="btn-ws" @click="createNewFile" title="新建文件"><FilePlus :size="14" /></button>
-        <button class="btn-ws" @click="createNewFolder" title="新建文件夹"><FolderPlus :size="14" /></button>
-        <button class="btn-ws" :class="{ active: showTerminal }" @click="showTerminal = !showTerminal" title="终端"><Terminal :size="14" /></button>
-      </div>
-    </div>
-
-    <!-- 隐藏的文件夹选择器 -->
-    <input ref="folderPicker" type="file" webkitdirectory directory style="display:none" @change="onFolderSelected" />
-
-    <!-- 文本输入对话框 (代替 prompt) -->
-    <div v-if="inputDialog.visible" class="path-dialog-overlay" @click.self="cancelInputDialog">
-      <div class="path-dialog">
-        <h3>{{ inputDialog.title }}</h3>
-        <input id="ws-input-field" v-model="inputDialog.value" class="form-input" :placeholder="inputDialog.placeholder" @keydown.enter="confirmInputDialog" @keydown.escape="cancelInputDialog" />
-        <div class="path-dialog-actions" style="margin-top: 16px;">
-          <button class="primary-btn" @click="confirmInputDialog">确认</button>
-          <button class="btn-secondary" @click="cancelInputDialog">取消</button>
-        </div>
+      <div class="toolbar-right">
+        <button class="tb-btn" @click="refreshTree" title="刷新"><RefreshCw :size="13" /></button>
+        <button class="tb-btn" @click="createNewFile" title="新建文件"><FilePlus :size="13" /></button>
+        <button class="tb-btn" @click="createNewFolder" title="新建文件夹"><FolderPlus :size="13" /></button>
+        <button class="tb-btn" :class="{ on: showTerminal }" @click="showTerminal = !showTerminal" title="终端"><Terminal :size="13" /></button>
       </div>
     </div>
 
-    <!-- 路径切换对话框（备选：手动输入） -->
-    <div v-if="showPathDialog" class="path-dialog-overlay" @click.self="showPathDialog = false">
-      <div class="path-dialog">
-        <h3>切换项目路径</h3>
-        <p class="path-dialog-hint">输入新的项目文件夹路径，或从常用路径中快速选择。</p>
-        <!-- 常用路径快捷按钮 -->
-        <div class="quick-paths" v-if="quickPaths.length">
-          <span class="quick-paths-label">常用路径：</span>
-          <button v-for="qp in quickPaths" :key="qp.path" class="quick-path-btn" @click="quickSelectPath(qp.path)" :title="qp.path">
-            <FolderOpen :size="12" /> {{ qp.label }}
-          </button>
+    <!-- 主体 -->
+    <div class="ide-body">
+      <!-- 文件树 -->
+      <div class="ide-sidebar" :style="{ width: sidebarWidth + 'px' }">
+        <div class="sidebar-head">
+          <FolderOpen :size="13" />
+          <span>文件</span>
         </div>
-        <input v-model="newPathInput" class="form-input" placeholder="如 C:\Projects\my-app 或 /home/user/project" @keydown.enter="applyNewPath" />
-        <div class="path-dialog-actions">
-          <button class="primary-btn" @click="applyNewPath">切换</button>
-          <button class="btn-secondary" @click="showPathDialog = false">取消</button>
-        </div>
-        <p v-if="pathDialogError" class="path-error">{{ pathDialogError }}</p>
-      </div>
-    </div>
-
-    <div class="ws-main">
-      <!-- 左侧目录树 -->
-      <div class="ws-sidebar" :style="{ width: sidebarWidth + 'px' }">
-        <div class="sidebar-header">
-          <span style="display:flex;align-items:center;gap:4px;"><FolderOpen :size="14" /> 文件</span>
-        </div>
-        <div class="tree-container">
-          <div v-if="!fileTree.length" class="tree-empty">
-            <FolderOpen class="tree-empty-icon" :size="32" />
-            <p>空工作台</p>
+        <div class="sidebar-tree">
+          <div v-if="!fileTree.length" class="tree-empty">空工作台</div>
+          <div v-for="node in fileTree" :key="node.path"
+            class="tree-item" :class="{ dir: node.type === 'directory' }"
+            :style="{ paddingLeft: (node.depth * 14 + 8) + 'px' }"
+            @click="handleTreeClick(node)"
+            @contextmenu.prevent="showContextMenu($event, node)">
+            <component :is="node.type === 'directory' ? (expandedDirs.has(node.path) ? FolderOpen : Folder) : getFileIcon(node.name)" :size="13" class="tree-ico" />
+            <span class="tree-name">{{ node.name }}</span>
           </div>
-          <template v-for="node in fileTree" :key="node.path">
-            <div
-              class="tree-item"
-              :class="{ 'is-dir': node.type === 'directory', 'is-open': expandedDirs.has(node.path) }"
-              :style="{ paddingLeft: (node.depth * 16 + 8) + 'px' }"
-              @click="handleTreeClick(node)"
-              @contextmenu.prevent="showContextMenu($event, node)"
-            >
-              <component :is="node.type === 'directory' ? (expandedDirs.has(node.path) ? FolderOpen : Folder) : getFileIcon(node.name)" :size="14" class="tree-icon" />
-              <span class="tree-name">{{ node.name }}</span>
-            </div>
-          </template>
         </div>
-        <!-- 拖拽调整大小 -->
-        <div class="resize-handle" @mousedown="startResize"></div>
+        <div class="resize-col" @mousedown="startResize"></div>
       </div>
 
-      <!-- 右侧编辑器+终端 -->
-      <div class="ws-content">
-        <!-- 编辑器区域 -->
-        <div class="ws-editor" :style="{ flex: showTerminal ? '1 1 60%' : '1 1 100%' }">
+      <!-- 编辑器 + 终端 右侧区域 -->
+      <div class="ide-main">
+        <!-- 编辑器 -->
+        <div class="ide-editor">
           <MonacoEditor ref="monacoEditor" />
         </div>
-        <!-- 终端区域 -->
-        <div v-if="showTerminal" class="ws-terminal" :style="{ height: terminalHeight + 'px' }">
-          <div class="terminal-resize-handle" @mousedown="startTerminalResize"></div>
-          <WebTerminal ref="webTerminal" />
+
+        <!-- 终端 -->
+        <Transition name="term-slide">
+          <div v-if="showTerminal" class="ide-terminal" :style="{ height: terminalHeight + 'px' }">
+            <div class="resize-row" @mousedown="startTerminalResize"></div>
+            <WebTerminal ref="webTerminal" />
+          </div>
+        </Transition>
+      </div>
+    </div>
+
+    <!-- 对话框 -->
+    <input ref="folderPicker" type="file" webkitdirectory directory style="display:none" @change="onFolderSelected" />
+    <div v-if="inputDialog.visible" class="dlg-overlay" @click.self="cancelInputDialog">
+      <div class="dlg-box">
+        <h3>{{ inputDialog.title }}</h3>
+        <input v-model="inputDialog.value" class="dlg-input" :placeholder="inputDialog.placeholder" @keydown.enter="confirmInputDialog" @keydown.escape="cancelInputDialog" />
+        <div class="dlg-actions">
+          <button class="dlg-btn primary" @click="confirmInputDialog">确认</button>
+          <button class="dlg-btn" @click="cancelInputDialog">取消</button>
         </div>
+      </div>
+    </div>
+    <div v-if="showPathDialog" class="dlg-overlay" @click.self="showPathDialog = false">
+      <div class="dlg-box">
+        <h3>切换项目路径</h3>
+        <div class="quick-paths" v-if="quickPaths.length">
+          <button v-for="qp in quickPaths" :key="qp.path" class="qp-btn" @click="newPathInput = qp.path">
+            <FolderOpen :size="11" /> {{ qp.label }}
+          </button>
+        </div>
+        <input v-model="newPathInput" class="dlg-input" placeholder="输入完整路径" @keydown.enter="applyNewPath" />
+        <div class="dlg-actions">
+          <button class="dlg-btn primary" @click="applyNewPath">切换</button>
+          <button class="dlg-btn" @click="showPathDialog = false">取消</button>
+        </div>
+        <p v-if="pathDialogError" class="dlg-error">{{ pathDialogError }}</p>
       </div>
     </div>
 
     <!-- 右键菜单 -->
-    <div v-if="contextMenu.visible" class="context-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click="contextMenu.visible = false">
-      <div class="ctx-item" @click="openInEditor"><Edit3 :size="14" class="ctx-icon" /> 打开</div>
-      <div class="ctx-divider"></div>
-      <div class="ctx-item" @click="renameItem"><Edit2 :size="14" class="ctx-icon" /> 重命名</div>
-      <div class="ctx-divider"></div>
-      <div class="ctx-item ctx-danger" @click="deleteItem"><Trash2 :size="14" class="ctx-icon" /> 删除</div>
+    <div v-if="contextMenu.visible" class="ctx-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click="contextMenu.visible = false">
+      <div class="ctx-item" @click="openInEditor"><Edit3 :size="13" /> 打开</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" @click="renameItem"><Edit2 :size="13" /> 重命名</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item danger" @click="deleteItem"><Trash2 :size="13" /> 删除</div>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, inject } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, inject } from 'vue';
 import { useApi } from '../composables/useApi.js';
 import { API_BASE, authFetch } from '../composables/apiClient.js';
 import { Laptop, RefreshCw, FilePlus, FolderPlus, Terminal, FolderOpen, Folder, FileCode, FileText, Image as ImageIcon, Database, Edit3, Edit2, Trash2 } from 'lucide-vue-next';
@@ -119,17 +110,18 @@ const $confirm = inject('$confirm');
 const workspacePath = ref('');
 const fileTree = ref([]);
 const expandedDirs = reactive(new Set());
-const showTerminal = ref(true);
-const sidebarWidth = ref(240);
-const terminalHeight = ref(300);
+const showTerminal = ref(false);
+const sidebarWidth = ref(220);
+const terminalHeight = ref(280);
 const monacoEditor = ref(null);
-const webTerminal = ref(null);
 const folderPicker = ref(null);
-
 const contextMenu = ref({ visible: false, x: 0, y: 0, node: null });
-
-// 通用输入对话框
 const inputDialog = ref({ visible: false, title: '', value: '', placeholder: '', resolve: null });
+const showPathDialog = ref(false);
+const newPathInput = ref('');
+const pathDialogError = ref('');
+const quickPaths = ref([]);
+
 function showInputDialog(title, placeholder = '') {
   return new Promise((resolve) => {
     inputDialog.value = { visible: true, title, value: '', placeholder, resolve };
@@ -145,48 +137,14 @@ function cancelInputDialog() {
   if (inputDialog.value.resolve) inputDialog.value.resolve(null);
 }
 
-// 路径切换对话框
-const showPathDialog = ref(false);
-const newPathInput = ref('');
-const pathDialogError = ref('');
-
-// 常用路径快捷按钮
-const quickPaths = ref([
-  { label: '桌面', path: '' },
-  { label: '文档', path: '' },
-  { label: '用户主目录', path: '' },
-]);
-
-// 文件夹选择器
 function openFolderPicker() {
-  if (folderPicker.value) {
-    folderPicker.value.value = ''; // 重置以便重复选择同一文件夹
-    folderPicker.value.click();
-  }
+  if (folderPicker.value) { folderPicker.value.value = ''; folderPicker.value.click(); }
 }
 
 function onFolderSelected(event) {
   const files = event.target.files;
-  if (!files || files.length === 0) return;
-
-  // 从第一个文件的 relativePath (webkitRelativePath) 提取根文件夹名
-  // webkitRelativePath 格式: "folderName/path/to/file.ext"
-  // 但我们无法直接获取完整绝对路径，只能获取相对路径
-  // 所以我们用文件路径去掉第一段来推导
-  const firstFile = files[0];
-  const relativePath = firstFile.webkitRelativePath || '';
-  const folderName = relativePath.split('/')[0] || '';
-
-  // 浏览器安全限制：无法获取完整绝对路径
-  // 因此我们打开手动输入对话框，但预填一个提示
-  newPathInput.value = workspacePath.value || '';
+  if (!files || files.length) return;
   showPathDialog.value = true;
-  pathDialogError.value = '';
-
-  // 提示用户
-  if (folderName) {
-    pathDialogError.value = `浏览器安全限制无法获取完整路径。您选择的文件夹名为 "${folderName}"，请在下方输入该文件夹的完整路径。`;
-  }
 }
 
 async function applyNewPath() {
@@ -195,8 +153,7 @@ async function applyNewPath() {
   pathDialogError.value = '';
   try {
     const r = await authFetch(`${API_BASE}/api/workspace/path`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
     });
     const data = await r.json();
@@ -204,41 +161,29 @@ async function applyNewPath() {
       workspacePath.value = data.path;
       showPathDialog.value = false;
       newPathInput.value = '';
-      // 刷新目录树
       expandedDirs.clear();
       loadTree();
-      toast('✅ 项目路径已切换', 'success');
+      toast('路径已切换', 'success');
     } else {
-      pathDialogError.value = data.detail || data.message || '路径设置失败';
+      pathDialogError.value = data.detail || '路径设置失败';
     }
-  } catch (e) {
-    pathDialogError.value = `请求失败: ${e.message}`;
-  }
+  } catch (e) { pathDialogError.value = e.message; }
 }
 
-// 加载工作台路径
 async function loadWorkspacePath() {
   try {
     const r = await authFetch(`${API_BASE}/api/workspace/path`);
-    if (r.ok) {
-      const data = await r.json();
-      workspacePath.value = data.path || '';
-    }
-  } catch (e) {}
+    if (r.ok) { const d = await r.json(); workspacePath.value = d.path || ''; }
+  } catch (e) { toast('加载工作路径失败: ' + e.message, 'error') }
 }
 
-// 加载目录树
-async function loadTree(dir = '') {
+async function loadTree() {
   try {
     const r = await authFetch(`${API_BASE}/api/workspace/tree`);
-    if (r.ok) {
-      const data = await r.json();
-      fileTree.value = flattenTree(data.tree || [], 0);
-    }
-  } catch (e) {}
+    if (r.ok) { const d = await r.json(); fileTree.value = flattenTree(d.tree || [], 0); }
+  } catch (e) { toast('加载文件树失败: ' + e.message, 'error') }
 }
 
-// 将树结构扁平化为带深度的列表
 function flattenTree(nodes, depth) {
   let result = [];
   for (const node of nodes) {
@@ -251,339 +196,253 @@ function flattenTree(nodes, depth) {
   return result;
 }
 
-function refreshTree() {
-  loadTree();
-}
-
-// 点击目录树节点
 function handleTreeClick(node) {
   if (node.type === 'directory') {
-    if (expandedDirs.has(node.path)) {
-      expandedDirs.delete(node.path);
-    } else {
-      expandedDirs.add(node.path);
-    }
-    // 重新展开树
+    if (expandedDirs.has(node.path)) expandedDirs.delete(node.path);
+    else expandedDirs.add(node.path);
     loadTree();
   } else {
-    openFileInEditor(node.path);
-  }
-}
-
-// 在编辑器中打开文件
-function openFileInEditor(filePath) {
-  if (monacoEditor.value) {
-    monacoEditor.value.openFile(filePath);
+    if (monacoEditor.value) monacoEditor.value.openFile(node.path);
   }
 }
 
 function getFileIcon(name) {
   const ext = name.split('.').pop()?.toLowerCase();
-  const icons = {
-    py: FileCode, js: FileCode, ts: FileCode, json: FileCode, html: FileCode, css: FileCode,
-    java: FileCode, go: FileCode, rs: FileCode, cpp: FileCode, c: FileCode, h: FileCode,
-    md: FileText, vue: FileCode, txt: FileText, xml: FileCode, yml: FileCode, yaml: FileCode,
-    sh: Terminal, bat: Terminal, sql: Database, png: ImageIcon, jpg: ImageIcon, svg: ImageIcon,
-  };
-  return icons[ext] || FileText;
+  const map = { py: FileCode, js: FileCode, ts: FileCode, json: FileCode, html: FileCode, css: FileCode, vue: FileCode, md: FileText, txt: FileText, sh: Terminal, sql: Database, png: ImageIcon, jpg: ImageIcon };
+  return map[ext] || FileText;
 }
 
-// 右键菜单
-function showContextMenu(event, node) {
-  contextMenu.value = { visible: true, x: event.clientX, y: event.clientY, node };
-}
-
-function openInEditor() {
-  if (contextMenu.value.node && contextMenu.value.node.type === 'file') {
-    openFileInEditor(contextMenu.value.node.path);
-  }
-}
-
-async function renameItem() {
-  const node = contextMenu.value.node;
-  if (!node) return;
-  const newName = await showInputDialog('新名称:', node.name);
-  if (!newName || newName === node.name) return;
-  // 简单实现：API 暂无 rename，提示用户
-  toast('重命名功能开发中', 'info');
-}
-
+function showContextMenu(e, node) { contextMenu.value = { visible: true, x: e.clientX, y: e.clientY, node }; }
+function openInEditor() { if (contextMenu.value.node?.type === 'file' && monacoEditor.value) monacoEditor.value.openFile(contextMenu.value.node.path); }
+async function renameItem() { toast('重命名功能开发中', 'info'); }
 async function deleteItem() {
   const node = contextMenu.value.node;
   if (!node) return;
   const ok = await $confirm({ title: '删除确认', message: `确定删除 ${node.name}？`, type: 'danger' });
   if (!ok) return;
-  try {
-    const r = await authFetch(`${API_BASE}/api/workspace/delete/${node.path}`, { method: 'DELETE' });
-    if (r.ok) loadTree();
-  } catch (e) {}
+  try { const r = await authFetch(`${API_BASE}/api/workspace/delete/${node.path}`, { method: 'DELETE' }); if (r.ok) loadTree(); } catch (e) { toast('删除失败: ' + e.message, 'error') }
 }
-
 async function createNewFile() {
   const name = await showInputDialog('文件名:');
   if (!name) return;
-  try {
-    await authFetch(`${API_BASE}/api/workspace/file`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, content: '' }),
-    });
-    loadTree();
-    openFileInEditor(name);
-  } catch (e) {}
+  try { await authFetch(`${API_BASE}/api/workspace/file`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, content: '' }) }); loadTree(); if (monacoEditor.value) monacoEditor.value.openFile(name); } catch (e) { toast('创建文件失败: ' + e.message, 'error') }
 }
-
 async function createNewFolder() {
   const name = await showInputDialog('文件夹名:');
   if (!name) return;
-  try {
-    await authFetch(`${API_BASE}/api/workspace/file`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name + '/.gitkeep', content: '' }),
-    });
-    loadTree();
-  } catch (e) {}
+  try { await authFetch(`${API_BASE}/api/workspace/file`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name + '/.gitkeep', content: '' }) }); loadTree(); } catch (e) { toast('创建文件夹失败: ' + e.message, 'error') }
 }
 
-// 侧边栏拖拽调整大小
 let resizing = false;
 function startResize(e) {
   resizing = true;
-  const startX = e.clientX;
-  const startW = sidebarWidth.value;
-  const onMove = (ev) => { sidebarWidth.value = Math.max(150, Math.min(500, startW + ev.clientX - startX)); };
+  const startX = e.clientX, startW = sidebarWidth.value;
+  const onMove = (ev) => { sidebarWidth.value = Math.max(120, Math.min(400, startW + ev.clientX - startX)); };
   const onUp = () => { resizing = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }
 
-// 终端拖拽调整高度
 function startTerminalResize(e) {
-  const startY = e.clientY;
-  const startH = terminalHeight.value;
-  const onMove = (ev) => { terminalHeight.value = Math.max(100, Math.min(600, startH - (ev.clientY - startY))); };
+  const startY = e.clientY, startH = terminalHeight.value;
+  const onMove = (ev) => { terminalHeight.value = Math.max(80, Math.min(500, startH - (ev.clientY - startY))); };
   const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }
 
-// 关闭右键菜单（带清理，防止内存泄漏）
-const _closeContextMenu = () => { contextMenu.value.visible = false; };
-onUnmounted(() => {
-  document.removeEventListener('click', _closeContextMenu);
-});
-
-function quickSelectPath(path) {
-  newPathInput.value = path;
-}
-
-// 加载常用路径
-async function loadQuickPaths() {
-  try {
-    const r = await authFetch(`${API_BASE}/api/workspace/quick_paths`);
-    if (r.ok) {
-      const data = await r.json();
-      if (data.paths && data.paths.length) {
-        quickPaths.value = data.paths;
-      }
-    }
-  } catch (e) {
-    // 静默失败，使用默认路径
-  }
-}
-
+function closeCtx() { contextMenu.value.visible = false; }
 onMounted(() => {
-  document.addEventListener('click', _closeContextMenu);
+  document.addEventListener('click', closeCtx);
   loadWorkspacePath();
   loadTree();
-  loadQuickPaths();
 });
+onUnmounted(() => { document.removeEventListener('click', closeCtx); });
 </script>
 
 <style scoped>
-.workspace-view { display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0; overflow: hidden; background: var(--bg-card); }
-
-/* 工具栏 */
-.ws-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: var(--bg); border-bottom: 1px solid var(--border); min-height: 40px; gap: 12px; }
-.ws-toolbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
-.ws-title { font-size: 14px; font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.ws-path { font-size: 11px; color: var(--text-muted); font-family: 'Consolas', 'Courier New', monospace; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 8px; background: var(--bg-muted); border-radius: 4px; }
-.ws-toolbar-right { display: flex; gap: 2px; }
-.btn-ws { background: transparent; border: 1px solid transparent; color: var(--text-secondary); padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; transition: all 0.15s ease; display: flex; align-items: center; gap: 4px; }
-.btn-ws:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border); }
-.btn-ws.active { background: var(--primary-light); color: var(--primary); border-color: rgba(91,122,138,0.2); }
-
-/* 主区域 */
-.ws-main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
-
-/* 侧边栏文件树 */
-.ws-sidebar { display: flex; flex-direction: column; background: var(--bg); border-right: 1px solid var(--border); position: relative; min-width: 150px; }
-.sidebar-header { padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em; }
-.tree-container { flex: 1; overflow-y: auto; padding: 4px 0; }
-.tree-empty { text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px; }
-.tree-empty-icon { font-size: 2rem; opacity: 0.4; margin-bottom: 8px; display: block; }
-.tree-item { display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; font-size: 13px; color: var(--text-secondary); white-space: nowrap; transition: all 0.1s ease; border-left: 2px solid transparent; }
-.tree-item:hover { background: var(--bg-hover); color: var(--text); }
-.tree-item.active { background: var(--primary-subtle); color: var(--primary); border-left-color: var(--primary); }
-.tree-item.is-dir { font-weight: 500; color: var(--text); }
-.tree-icon { font-size: 13px; flex-shrink: 0; width: 16px; text-align: center; }
-.tree-name { overflow: hidden; text-overflow: ellipsis; }
-.resize-handle { position: absolute; top: 0; right: -2px; width: 4px; height: 100%; cursor: col-resize; z-index: 10; transition: background 0.15s ease; }
-.resize-handle:hover { background: var(--primary); }
-
-/* 编辑器+终端 */
-.ws-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-.ws-editor { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-.ws-terminal { flex: 0 0 auto; height: 300px; border-top: 1px solid var(--border); position: relative; min-height: 150px; }
-.terminal-resize-handle { position: absolute; top: -4px; left: 0; right: 0; height: 8px; cursor: row-resize; z-index: 10; transition: background 0.15s ease; }
-.terminal-resize-handle:hover { background: var(--primary); }
-
-/* 空状态 */
-.ws-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); gap: 12px; }
-.ws-empty-icon { font-size: 3rem; opacity: 0.3; }
-.ws-empty-text { font-size: 14px; }
-.ws-empty-hint { font-size: 12px; color: var(--text-muted); opacity: 0.7; }
-
-/* 右键菜单 */
-.context-menu { position: fixed; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; z-index: 9999; min-width: 160px; box-shadow: var(--shadow-lg); animation: ctxIn 0.12s ease; }
-.ctx-item { padding: 7px 14px; font-size: 13px; color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.1s ease; }
-.ctx-item:hover { background: var(--bg-hover); }
-.ctx-item.ctx-danger:hover { background: var(--danger-light); color: var(--danger); }
-.ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
-@keyframes ctxIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-
-/* 路径切换对话框 */
-.path-dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 10000; animation: fadeIn 0.15s ease; }
-.path-dialog { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; min-width: 420px; max-width: 90vw; box-shadow: var(--shadow-xl); }
-.path-dialog h3 { margin: 0 0 8px; font-size: 16px; color: var(--text); }
-.path-dialog-hint { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; }
-.path-dialog .form-input { width: 100%; margin-bottom: 12px; }
-.path-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.path-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
-.btn-path-change { margin-left: 4px; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-/* 常用路径快捷按钮 */
-.quick-paths { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
-.quick-paths-label { font-size: 12px; color: var(--text-muted); margin-right: 4px; white-space: nowrap; }
-.quick-path-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
-.quick-path-btn:hover { background: var(--primary-light); color: var(--primary); border-color: var(--primary); }
-/* ===== 工作区 ===== */
-.workspace-sidebar {
-  width: clamp(300px, 26vw, 380px);
-  min-width: 260px;
-  background: rgba(13,17,23,0.7);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  color: var(--text);
+.ide {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--glass-border);
-  animation: slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  flex-shrink: 0;
-  z-index: 10;
-  box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
 }
 
-.workspace-header {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--glass-border);
+/* ── 工具栏 ── */
+.ide-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 40px;
+  padding: 0 14px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
-
-.workspace-header h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
-
-.workspace-actions { display: flex; gap: 5px; }
-
-.workspace-tree {
-  max-height: 30%;
-  min-height: 60px;
-  overflow-y: auto;
-  border-bottom: 1px solid var(--glass-border);
-  font-size: 0.86rem;
+.toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 6px; }
+.toolbar-left { color: var(--text-muted); min-width: 0; }
+.toolbar-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.toolbar-path {
+  font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 8px; background: var(--bg-muted); border-radius: var(--radius-sm);
 }
+.tb-btn {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted);
+  cursor: pointer; transition: var(--transition-fast);
+}
+.tb-btn:hover { background: var(--bg-hover); color: var(--text); }
+.tb-btn.on { background: var(--primary-subtle); color: var(--primary); }
 
-.workspace-editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 100px; }
-
-.workspace-empty {
+/* ── 主体 flex 布局 ── */
+.ide-body {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.ws-file-item {
-  padding: 5px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: var(--transition);
-  color: var(--text-secondary);
-}
-
-.ws-file-item:hover {
-  background: rgba(99,102,241,0.08);
-  color: var(--text);
-}
-
-/* ===== 补丁列表 ===== */
-.patches-list {
+/* ── 文件树侧边栏 ── */
+.ide-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  max-height: 260px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  position: relative;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+.sidebar-head {
+  display: flex; align-items: center; gap: 5px; padding: 8px 10px;
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.sidebar-tree {
+  flex: 1;
   overflow-y: auto;
-  padding: 3px 0;
+  padding: 4px 0;
+}
+.tree-empty { text-align: center; padding: 24px 12px; color: var(--text-muted); font-size: 12px; }
+.tree-item {
+  display: flex; align-items: center; gap: 5px; padding: 4px 10px; cursor: pointer;
+  font-size: 12.5px; color: var(--text-secondary); white-space: nowrap;
+  transition: background 0.1s; border-left: 2px solid transparent;
+}
+.tree-item:hover { background: var(--bg-hover); color: var(--text); }
+.tree-item.dir { font-weight: 500; color: var(--text); }
+.tree-ico { flex-shrink: 0; width: 14px; text-align: center; color: var(--text-muted); }
+.tree-name { overflow: hidden; text-overflow: ellipsis; }
+.resize-col {
+  position: absolute; top: 0; right: -2px; width: 4px; height: 100%;
+  cursor: col-resize; z-index: 10; transition: background 0.15s;
+}
+.resize-col:hover { background: var(--primary); }
+
+/* ── 右侧主区域（编辑器 + 终端） ── */
+.ide-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+  position: relative;
+  overflow: hidden;
 }
 
-.patch-item {
+/* ── 编辑器 ── */
+.ide-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  background: rgba(30,41,59,0.3);
-  border: 1px solid rgba(99,102,241,0.1);
+  flex-direction: column;
+}
+.ide-editor :deep(.monaco-wrapper) {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.ide-editor :deep(.monaco-editor-container) {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+/* ── 终端 ── */
+.ide-terminal {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--terminal-bg);
+  position: relative;
+}
+.resize-row {
+  position: absolute; top: -3px; left: 0; right: 0; height: 6px;
+  cursor: row-resize; z-index: 10; transition: background 0.15s;
+}
+.resize-row:hover { background: var(--primary); }
+
+/* 终端过渡动画 */
+.term-slide-enter-active,
+.term-slide-leave-active {
+  transition: transform 0.2s var(--ease);
+}
+.term-slide-enter-from,
+.term-slide-leave-to {
+  transform: translateY(100%);
+}
+
+/* ── 对话框 ── */
+.dlg-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.dlg-box {
+  background: var(--glass-bg-thick); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 24px;
+  min-width: 380px; max-width: 90vw; box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+.dlg-box h3 { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+.dlg-input {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--text); font-family: var(--font); font-size: 13px;
+  outline: none; margin-bottom: 12px; transition: border-color 0.2s;
+}
+.dlg-input:focus { border-color: var(--primary); }
+.dlg-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dlg-btn {
+  padding: 7px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer;
+  font-family: var(--font); transition: var(--transition-fast);
+}
+.dlg-btn:hover { background: var(--bg-hover); color: var(--text); }
+.dlg-btn.primary { border: 0; background: var(--primary-gradient); color: white; }
+.dlg-btn.primary:hover { box-shadow: 0 2px 12px rgba(99,102,241,0.3); }
+.dlg-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
+
+.quick-paths { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.qp-btn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+  font-size: 12px; color: var(--text-secondary); background: var(--bg-muted);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
   transition: var(--transition-fast);
-  font-size: 0.84rem;
 }
+.qp-btn:hover { background: var(--primary-subtle); color: var(--primary); border-color: var(--primary-light); }
 
-.patch-item:hover {
-  background: rgba(99,102,241,0.06);
-  border-color: rgba(99,102,241,0.2);
+/* ── 右键菜单 ── */
+.ctx-menu {
+  position: fixed; background: var(--glass-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 4px;
+  z-index: 9999; min-width: 140px; box-shadow: 0 8px 28px rgba(0,0,0,0.35);
 }
-
-.patch-module { font-weight: 600; color: var(--primary); white-space: nowrap; min-width: 130px; }
-.patch-path { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Consolas','Courier New',monospace; font-size: 0.8rem; }
-.patch-size { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
-
-.patch-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+.ctx-item {
+  display: flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px;
+  color: var(--text); cursor: pointer; border-radius: 8px; transition: background 0.1s;
 }
-
-.patch-header .label { font-size: 0.88rem; color: var(--text-secondary); font-weight: 500; }
-
-.patch-count-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
-  background: rgba(99,102,241,0.15);
-  color: var(--primary);
-  border-radius: 11px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  margin-left: 8px;
-}
+.ctx-item:hover { background: var(--bg-hover); }
+.ctx-item.danger:hover { background: rgba(239,68,68,0.1); color: var(--danger); }
+.ctx-sep { height: 1px; background: var(--border); margin: 3px 8px; }
 </style>

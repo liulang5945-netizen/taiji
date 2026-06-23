@@ -23,6 +23,7 @@
 import os
 import json
 import time
+import random
 import logging
 import threading
 from typing import Dict, List, Optional, Any
@@ -131,7 +132,7 @@ class LifeScheduler:
         # 事件总线引用（由 TaijiCore 注入，用于广播生命事件到前端）
         self._event_bus = event_bus
 
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         self._load_state()
 
         logger.info("LifeScheduler initialized")
@@ -182,29 +183,127 @@ class LifeScheduler:
                     if hasattr(self._play_engine, "abort"):
                         self._play_engine.abort()
 
-    def record_interaction(self, success: bool = True, topic: str = ""):
+    def record_interaction(self, success: bool = True, topic: str = "",
+                           reasoning_steps: int = 0, used_tools: bool = False,
+                           had_search_results: bool = False):
         """
         记录一次用户交互（外部调用）。
 
         每次用户与态极交互时调用，影响需求状态。
+        需求变化与实际行为挂钩，而非固定数值。
+
+        Args:
+            success: 推理是否成功
+            topic: 对话话题（用于判断话题多样性）
+            reasoning_steps: ReAct 推理步数（越多越消耗精力）
+            used_tools: 是否调用了工具（搜索/执行等）
+            had_search_results: 是否获得了搜索结果（新知识输入）
         """
         with self._lock:
             self._last_activity = datetime.now()
 
+            # —— 疲劳：与实际推理消耗挂钩 ——
+            # 简单问题（1步）几乎不累，复杂任务（5-6步）显著消耗
+            fatigue_cost = 1.0 + reasoning_steps * 1.5
+            if used_tools:
+                fatigue_cost += 2.0  # 工具调用额外消耗
+            self.needs.fatigue += fatigue_cost
+
             if success:
-                # 交互成功 → 降低饥饿/压力，提升好奇心
-                self.needs.hunger -= 2
-                self.needs.stress -= 3
-                self.needs.curiosity += 1
-                self.needs.boredom -= 5
-                self.needs.fatigue += 1.5  # 工作会累
+                # —— 成功交互 ——
+                # 压力下降（与推理步数成反比：越容易的任务压力降得越多）
+                self.needs.stress -= max(1, 5 - reasoning_steps * 0.5)
+
+                # 饥饿：与是否有新知识输入挂钩
+                if had_search_results:
+                    self.needs.hunger -= 8  # 获得新知识，饥饿大幅下降
+                else:
+                    self.needs.hunger -= 2  # 普通对话，饥饿轻微下降
+
+                # 好奇心：使用了工具说明探索了新领域，好奇心满足
+                if used_tools and had_search_results:
+                    self.needs.curiosity -= 12  # 搜索到了答案
+                elif used_tools:
+                    self.needs.curiosity -= 5   # 尝试了但结果一般
+                else:
+                    self.needs.curiosity += 1   # 普通对话，好奇心微增
+
+                # 无聊：新话题/新工具使用 → 无聊下降
+                if used_tools:
+                    self.needs.boredom -= 8
+                else:
+                    self.needs.boredom -= 3
+
             else:
-                # 交互失败 → 增加压力和饥饿
-                self.needs.stress += 5
-                self.needs.hunger += 3
-                self.needs.fatigue += 2
+                # —— 失败交互 ——
+                self.needs.stress += 5 + reasoning_steps * 0.5  # 越折腾压力越大
+                self.needs.hunger += 3  # 失败消耗更多
+                self.needs.curiosity += 3  # 失败反而激发好奇心（想搞明白）
+                self.needs.boredom -= 2  # 至少不无聊
+
+            # 话题多样性影响无聊度
+            if topic:
+                topic_changed = self._check_topic_change(topic)
+                if topic_changed:
+                    self.needs.boredom -= 5  # 新话题，不无聊
+                else:
+                    self.needs.boredom += 2  # 重复话题，有点无聊
 
             self.needs.clamp_all()
+
+    def _check_topic_change(self, new_topic: str) -> bool:
+        """检查话题是否与最近的交互不同（判断话题多样性）"""
+        try:
+            # 看最近 5 个事件的话题
+            recent_topics = [e.trigger for e in self._event_log[-5:] if e.trigger]
+            if not recent_topics:
+                return True
+            # 如果新话题不在最近话题中，说明话题变了
+            return new_topic not in recent_topics
+        except Exception:
+            return True
+
+    # ─── 公开线程安全 API（供外部模块使用）──
+
+    def add_fatigue(self, amount: float):
+        """增加疲劳度（线程安全）"""
+        with self._lock:
+            self.needs.fatigue += amount
+            self.needs.clamp_all()
+
+    def add_hunger(self, amount: float):
+        """增加饥饿度（线程安全）"""
+        with self._lock:
+            self.needs.hunger += amount
+            self.needs.clamp_all()
+
+    def add_stress(self, amount: float):
+        """增加压力（线程安全）"""
+        with self._lock:
+            self.needs.stress += amount
+            self.needs.clamp_all()
+
+    def add_boredom(self, amount: float):
+        """增加无聊度（线程安全）"""
+        with self._lock:
+            self.needs.boredom += amount
+            self.needs.clamp_all()
+
+    def add_curiosity(self, amount: float):
+        """增加好奇心（线程安全）"""
+        with self._lock:
+            self.needs.curiosity += amount
+            self.needs.clamp_all()
+
+    def get_needs_snapshot(self) -> dict:
+        """获取需求快照（线程安全）"""
+        with self._lock:
+            return self.needs.to_dict()
+
+    def get_life_state(self) -> str:
+        """获取生命状态（线程安全）"""
+        with self._lock:
+            return self._life_state
 
     def force_action(self, action: str) -> dict:
         """
@@ -331,23 +430,44 @@ class LifeScheduler:
                 self._save_state()
 
     def _needs_tick(self):
-        """需求自然变化（每次心跳调用）"""
-        # 需求自然增长
-        self.needs.hunger += self.HUNGER_GROWTH
-        self.needs.fatigue += self.FATIGUE_GROWTH
-        self.needs.boredom += self.BOREDOM_GROWTH
-        self.needs.curiosity += self.CURIOSITY_GROWTH
+        """需求自然变化（每次心跳调用）— 带随机扰动，让生命状态不完全可预测"""
+        import random as _rand
 
-        # 压力自然衰减
-        self.needs.stress -= self.STRESS_DECAY
+        # 随机扰动：每个需求 ±0~1.5 的波动，模拟生命的不确定性
+        jitter = lambda: _rand.uniform(-1.5, 1.5)
+
+        # 需求自然增长（带随机扰动）
+        self.needs.hunger += self.HUNGER_GROWTH + jitter()
+        self.needs.fatigue += self.FATIGUE_GROWTH + jitter()
+        self.needs.boredom += self.BOREDOM_GROWTH + jitter()
+        self.needs.curiosity += self.CURIOSITY_GROWTH + jitter()
+
+        # 压力自然衰减（带随机扰动）
+        self.needs.stress -= self.STRESS_DECAY + abs(jitter()) * 0.3
 
         # 如果很久没有活动，无聊度加速上升
         if self._last_activity:
             idle_minutes = (datetime.now() - self._last_activity).total_seconds() / 60
             if idle_minutes > 30:
-                self.needs.boredom += 0.5
+                self.needs.boredom += 0.5 + abs(jitter()) * 0.5
             if idle_minutes > 60:
                 self.needs.fatigue += 0.3
+
+        # 偶尔的"情绪波动"（5% 概率触发较大幅度变化）
+        if _rand.random() < 0.05:
+            mood = _rand.choice(['happy', 'restless', 'curious', 'tired'])
+            if mood == 'happy':
+                self.needs.stress -= 3
+                self.needs.boredom -= 2
+            elif mood == 'restless':
+                self.needs.boredom += 4
+                self.needs.curiosity += 3
+            elif mood == 'curious':
+                self.needs.curiosity += 5
+                self.needs.boredom -= 2
+            elif mood == 'tired':
+                self.needs.fatigue += 4
+                self.needs.curiosity -= 2
 
         self.needs.clamp_all()
 
@@ -433,12 +553,13 @@ class LifeScheduler:
 
             report = self._feed_engine.feed(reason="auto")
 
-            # 吃饭后：饥饿度大幅下降，好奇心略有提升
-            self.needs.hunger -= 40
-            self.needs.curiosity += 10
-            self.needs.boredom -= 10
-            self.needs.fatigue += 5  # 吃饭也有一点点累
-            self.needs.clamp_all()
+            # 吃饭后：饥饿度大幅下降，好奇心略有提升（线程安全）
+            with self._lock:
+                self.needs.hunger -= 40
+                self.needs.curiosity += 10
+                self.needs.boredom -= 10
+                self.needs.fatigue += 5  # 吃饭也有一点点累
+                self.needs.clamp_all()
 
             # 广播事件到前端
             self._publish_event("feed_complete", {"samples": report.samples_generated})
@@ -446,7 +567,9 @@ class LifeScheduler:
             return {"success": True, "samples": report.samples_generated}
         except Exception as e:
             logger.error(f"Feed failed: {e}")
-            self.needs.hunger -= 10  # 即使失败也稍微缓解饥饿
+            with self._lock:
+                self.needs.hunger -= 10  # 即使失败也稍微缓解饥饿
+                self.needs.clamp_all()
             return {"success": False, "error": str(e)}
 
     def _do_sleep(self) -> dict:
@@ -458,12 +581,13 @@ class LifeScheduler:
 
             report = self._sleep_engine.sleep(reason="auto")
 
-            # 睡觉后：疲劳度清零，压力下降，饥饿上升
-            self.needs.fatigue -= 60
-            self.needs.stress -= 30
-            self.needs.hunger += 20  # 睡醒了会饿
-            self.needs.boredom += 10  # 睡醒了可能无聊
-            self.needs.clamp_all()
+            # 睡觉后：疲劳度清零，压力下降，饥饿上升（线程安全）
+            with self._lock:
+                self.needs.fatigue -= 60
+                self.needs.stress -= 30
+                self.needs.hunger += 20  # 睡醒了会饿
+                self.needs.boredom += 10  # 睡醒了可能无聊
+                self.needs.clamp_all()
 
             # 广播事件到前端
             self._publish_event("sleep_complete", {
@@ -478,7 +602,9 @@ class LifeScheduler:
             }
         except Exception as e:
             logger.error(f"Sleep failed: {e}")
-            self.needs.fatigue -= 20
+            with self._lock:
+                self.needs.fatigue -= 20
+                self.needs.clamp_all()
             return {"success": False, "error": str(e)}
 
     def _do_play(self) -> dict:
@@ -490,12 +616,13 @@ class LifeScheduler:
 
             report = self._play_engine.play(reason="auto")
 
-            # 玩耍后：无聊度下降，好奇心得到满足，压力下降
-            self.needs.boredom -= 35
-            self.needs.curiosity -= 15
-            self.needs.stress -= 10
-            self.needs.fatigue += 3  # 玩耍也稍微有点累
-            self.needs.clamp_all()
+            # 玩耍后：无聊度下降，好奇心得到满足，压力下降（线程安全）
+            with self._lock:
+                self.needs.boredom -= 35
+                self.needs.curiosity -= 15
+                self.needs.stress -= 10
+                self.needs.fatigue += 3  # 玩耍也稍微有点累
+                self.needs.clamp_all()
 
             # 广播事件到前端
             self._publish_event("play_complete", {"mood": report.mood})
@@ -507,7 +634,9 @@ class LifeScheduler:
             }
         except Exception as e:
             logger.error(f"Play failed: {e}")
-            self.needs.boredom -= 10
+            with self._lock:
+                self.needs.boredom -= 10
+                self.needs.clamp_all()
             return {"success": False, "error": str(e)}
 
     def _do_explore(self) -> dict:
@@ -519,12 +648,13 @@ class LifeScheduler:
 
             result = self._explore_engine.explore(reason="auto")
 
-            # 探索后：好奇心大幅下降，饥饿上升（学习消耗能量）
-            self.needs.curiosity -= 40
-            self.needs.hunger += 15
-            self.needs.fatigue += 8
-            self.needs.boredom -= 10
-            self.needs.clamp_all()
+            # 探索后：好奇心大幅下降，饥饿上升（线程安全）
+            with self._lock:
+                self.needs.curiosity -= 40
+                self.needs.hunger += 15
+                self.needs.fatigue += 8
+                self.needs.boredom -= 10
+                self.needs.clamp_all()
 
             # 广播事件到前端
             self._publish_event("explore_complete", {
@@ -541,7 +671,9 @@ class LifeScheduler:
             }
         except Exception as e:
             logger.error(f"Explore failed: {e}")
-            self.needs.curiosity -= 10
+            with self._lock:
+                self.needs.curiosity -= 10
+                self.needs.clamp_all()
             return {"success": False, "error": str(e)}
 
     def _publish_event(self, event_type: str, data: dict = None):
@@ -559,8 +691,15 @@ class LifeScheduler:
 
     # ─── 持久化 ─────────────────────────────────────
 
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _save_state(self):
         """保存生命状态"""
+        self._ensure_data_dir()
         try:
             state = {
                 "needs": self.needs.to_dict(),

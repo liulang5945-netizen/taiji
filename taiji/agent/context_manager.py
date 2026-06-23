@@ -264,19 +264,71 @@ class ContextManager:
         results.sort(key=lambda x: x["relevance"], reverse=True)
         return results[:top_k]
 
-    # ─── 上下文构建（相关性驱动）────────────────────
+    # ─── 上下文构建（相关性驱动 + 任务自适应）────────
+
+    def detect_task_type(self, task: str) -> str:
+        """
+        自动检测任务类型。
+
+        Returns:
+            "code" | "search" | "conversation" | "creative" | "factual"
+        """
+        task_lower = task.lower()
+
+        code_keywords = ["代码", "python", "function", "def ", "class ", "bug", "error",
+                         "debug", "编写", "实现", "code", "script", "程序"]
+        if any(kw in task_lower for kw in code_keywords):
+            return "code"
+
+        search_keywords = ["搜索", "查找", "search", "find", "查询", "搜", "query"]
+        if any(kw in task_lower for kw in search_keywords):
+            return "search"
+
+        creative_keywords = ["写", "创作", "故事", "诗", "write", "story", "poem", "创意"]
+        if any(kw in task_lower for kw in creative_keywords):
+            return "creative"
+
+        factual_keywords = ["什么是", "解释", "定义", "what is", "explain", "define", "原理"]
+        if any(kw in task_lower for kw in factual_keywords):
+            return "factual"
+
+        return "conversation"
 
     def build_context(self, task: str, system_prompt: str = "",
                       include_history: bool = True,
                       include_memory: bool = True,
-                      max_tokens: int = None) -> str:
+                      max_tokens: int = None,
+                      task_type: str = None) -> str:
         """
         构建完整的上下文字符串。
 
-        改进：记忆按相关性排序，而非按时间排序。
+        支持任务类型自适应：
+        - code: 高比例相关记忆，低比例对话历史
+        - conversation: 高比例对话历史
+        - search: 高比例知识库记忆
+        - creative: 低比例约束，高比例联想
         """
+        if task_type is None:
+            task_type = self.detect_task_type(task)
+
         budget = max_tokens or self.max_context_tokens
         parts = []
+
+        # 根据任务类型调整预算分配
+        history_ratio = 0.5
+        memory_ratio = 0.6
+        if task_type == "code":
+            history_ratio = 0.3
+            memory_ratio = 0.8  # 代码任务需要更多相关记忆
+        elif task_type == "conversation":
+            history_ratio = 0.7  # 对话需要更多历史
+            memory_ratio = 0.4
+        elif task_type == "search":
+            history_ratio = 0.2
+            memory_ratio = 0.9  # 搜索任务需要最多记忆
+        elif task_type == "creative":
+            history_ratio = 0.4
+            memory_ratio = 0.3
 
         # 1. 系统提示
         if system_prompt:
@@ -289,8 +341,9 @@ class ContextManager:
             long_term_text = self._get_long_term_context()
             if long_term_text:
                 lt_tokens = self._estimate_tokens(long_term_text)
-                parts.append(("long_term_memory", long_term_text, min(lt_tokens, 300)))
-                budget -= min(lt_tokens, 300)
+                lt_budget = min(lt_tokens, 300 if task_type != "search" else 500)
+                parts.append(("long_term_memory", long_term_text, lt_budget))
+                budget -= lt_budget
 
         # 3. 持久化记忆
         if include_memory and self._persistent_memories:
@@ -302,13 +355,14 @@ class ContextManager:
 
         # 4. 对话历史（含摘要 + CoT 上下文）
         if include_history and self._conversation_history:
-            history_budget = int(budget * 0.5)
+            history_budget = int(budget * history_ratio)
             history_text = self._get_history_context(history_budget)
 
-            # 添加 CoT 上下文（最近几轮的思考过程）
-            cot_text = self.get_cot_context(max_turns=2)
-            if cot_text:
-                history_text = f"{history_text}\n\n【推理上下文】\n{cot_text}"
+            # 代码任务不注入 CoT 上下文（减少噪音）
+            if task_type != "code":
+                cot_text = self.get_cot_context(max_turns=2)
+                if cot_text:
+                    history_text = f"{history_text}\n\n【推理上下文】\n{cot_text}"
             if history_text:
                 h_tokens = self._estimate_tokens(history_text)
                 parts.append(("history", history_text, h_tokens))
@@ -316,7 +370,7 @@ class ContextManager:
 
         # 5. 相关记忆（按任务相关性检索）
         if include_memory:
-            relevant_budget = int(budget * 0.6)
+            relevant_budget = int(budget * memory_ratio)
             relevant_text = self._get_relevant_context(task, relevant_budget)
             if relevant_text:
                 r_tokens = self._estimate_tokens(relevant_text)
@@ -344,6 +398,23 @@ class ContextManager:
                 context += f"[用户] {content}\n[助手] "
 
         return context
+
+    def build_context_adaptive(self, task: str, system_prompt: str = "",
+                                include_history: bool = True,
+                                include_memory: bool = True,
+                                max_tokens: int = None) -> tuple:
+        """
+        自适应上下文构建 — 自动检测任务类型并调整策略。
+
+        Returns:
+            (context: str, task_type: str) 元组
+        """
+        task_type = self.detect_task_type(task)
+        context = self.build_context(
+            task, system_prompt, include_history, include_memory,
+            max_tokens, task_type=task_type,
+        )
+        return context, task_type
 
     def build_messages(self, task: str, system_prompt: str = "",
                        include_history: bool = True,

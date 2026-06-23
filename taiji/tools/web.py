@@ -123,76 +123,102 @@ _cache = WebCache()
 # 搜索引擎
 # ═══════════════════════════════════════════════
 
+def _http_get(url: str, timeout: int = 10) -> str:
+    """统一的 HTTP GET 请求（纯 stdlib）"""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode('utf-8', errors='ignore')
+
+
 def _search_duckduckgo(query: str, max_results: int = 5) -> List[SearchResult]:
-    """DuckDuckGo 搜索"""
+    """DuckDuckGo 搜索（纯 stdlib，通过 HTML 版搜索页抓取）"""
     try:
-        from duckduckgo_search import DDGS
+        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+        html = _http_get(url)
         results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append(SearchResult(
-                    title=r.get("title", ""),
-                    url=r.get("href", r.get("link", "")),
-                    snippet=r.get("body", r.get("snippet", "")),
-                    source="DuckDuckGo",
-                ))
+        # 解析 DDG HTML 搜索结果
+        # 每个结果在 <a class="result__a" ...> 标题 </a> 和 <a class="result__snippet" ...> 摘要 </a>
+        blocks = re.findall(
+            r'<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>.*?'
+            r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
+            html, re.DOTALL
+        )
+        for href, title, snippet in blocks[:max_results]:
+            # DDG 的 href 可能是重定向链接，提取真实 URL
+            real_url = href
+            if "uddg=" in href:
+                m = re.search(r'uddg=([^&]+)', href)
+                if m:
+                    real_url = urllib.parse.unquote(m.group(1))
+            results.append(SearchResult(
+                title=re.sub(r'<[^>]+>', '', title).strip(),
+                url=real_url,
+                snippet=re.sub(r'<[^>]+>', '', snippet).strip(),
+                source="DuckDuckGo",
+            ))
         return results
-    except ImportError:
-        logger.debug("duckduckgo_search 未安装")
-        return []
     except Exception as e:
         logger.debug(f"DuckDuckGo 搜索失败: {e}")
         return []
 
 
 def _search_bing(query: str, max_results: int = 5) -> List[SearchResult]:
-    """Bing 搜索（网页抓取）"""
+    """Bing 搜索（纯 stdlib，网页抓取 + regex 解析）"""
     try:
-        from bs4 import BeautifulSoup
-        import requests
         url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
-        resp = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
+        html = _http_get(url)
         results = []
-        for item in soup.select(".b_algo"):
-            title_el = item.select_one("h2 a")
-            desc_el = item.select_one(".b_caption p")
-            if title_el:
-                results.append(SearchResult(
-                    title=title_el.text.strip(),
-                    url=title_el.get("href", ""),
-                    snippet=desc_el.text.strip() if desc_el else "",
-                    source="Bing",
-                ))
-        return results[:max_results]
+        # 解析 Bing 搜索结果：<li class="b_algo"><h2><a href="..." >标题</a></h2><p>摘要</p>
+        blocks = re.findall(
+            r'<li\s+class="b_algo">(.*?)</li>',
+            html, re.DOTALL
+        )
+        for block in blocks[:max_results]:
+            title_m = re.search(r'<h2[^>]*>\s*<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', block, re.DOTALL)
+            desc_m = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
+            if title_m:
+                href = title_m.group(1)
+                title = re.sub(r'<[^>]+>', '', title_m.group(2)).strip()
+                snippet = re.sub(r'<[^>]+>', '', desc_m.group(1)).strip() if desc_m else ""
+                results.append(SearchResult(title=title, url=href, snippet=snippet, source="Bing"))
+        return results
     except Exception as e:
         logger.debug(f"Bing 搜索失败: {e}")
         return []
 
 
 def _search_baidu(query: str, max_results: int = 5) -> List[SearchResult]:
-    """百度搜索（网页抓取）"""
+    """百度搜索（纯 stdlib，网页抓取 + regex 解析）"""
     try:
-        from bs4 import BeautifulSoup
-        import requests
         url = f"https://www.baidu.com/s?wd={urllib.parse.quote(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
-        resp = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
+        html = _http_get(url)
         results = []
-        for item in soup.select(".result.c-container"):
-            title = item.select_one(".t")
-            desc = item.select_one(".c-abstract")
-            link = item.select_one(".t a")
-            if title:
+        # 解析百度搜索结果
+        blocks = re.findall(
+            r'<div[^>]*class="[^"]*result[^"]*c-container[^"]*"[^>]*>(.*?)</div>\s*(?=<div[^>]*class="[^"]*result)',
+            html, re.DOTALL
+        )
+        if not blocks:
+            blocks = re.findall(r'<div[^>]*id="content_left"[^>]*>(.*)', html, re.DOTALL)
+            if blocks:
+                blocks = re.findall(r'<div[^>]*class="[^"]*result[^"]*c-container[^"]*"[^>]*>(.*?)(?=<div[^>]*class="[^"]*result[^"]*c-container)', blocks[0], re.DOTALL)
+        for block in blocks[:max_results]:
+            title_m = re.search(r'<h3[^>]*>\s*<a[^>]*>(.*?)</a>', block, re.DOTALL)
+            link_m = re.search(r'<h3[^>]*>\s*<a[^>]*href="([^"]*)"', block, re.DOTALL)
+            desc_m = re.search(r'<span[^>]*class="[^"]*content-right_8Zs40[^"]*"[^>]*>(.*?)</span>|<div[^>]*class="[^"]*c-abstract[^"]*"[^>]*>(.*?)</div>', block, re.DOTALL)
+            if title_m:
+                title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+                snippet = ""
+                if desc_m:
+                    snippet = re.sub(r'<[^>]+>', '', desc_m.group(1) or desc_m.group(2) or "").strip()
                 results.append(SearchResult(
-                    title=title.text.strip(),
-                    url=link.get("href", "") if link else "",
-                    snippet=desc.text.strip() if desc else "",
+                    title=title,
+                    url=link_m.group(1) if link_m else "",
+                    snippet=snippet,
                     source="Baidu",
                 ))
-        return results[:max_results]
+        return results
     except Exception as e:
         logger.debug(f"百度搜索失败: {e}")
         return []
@@ -273,63 +299,60 @@ def search_to_text(query: str, max_results: int = 5) -> str:
 # ═══════════════════════════════════════════════
 
 def _html_to_text(html: str) -> str:
-    """HTML 转纯文本"""
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, "html.parser")
-        # 移除无用标签
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe"]):
-            tag.extract()
-        text = soup.get_text(separator="\n", strip=True)
-        # 清理多余空行
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text
-    except ImportError:
-        # 无 BeautifulSoup，简单清理
-        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-        text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
-        text = re.sub(r'<[^>]+>', '', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
+    """HTML 转纯文本（纯 regex，无外部依赖）"""
+    # 移除无用标签
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<header[^>]*>.*?</header>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<aside[^>]*>.*?</aside>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<iframe[^>]*>.*?</iframe>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # 在块级标签前后插入换行
+    text = re.sub(r'<(?:br|p|div|h[1-6]|li|tr|blockquote)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(?:p|div|h[1-6]|li|tr|blockquote)>', '\n', text, flags=re.IGNORECASE)
+    # 移除所有剩余标签
+    text = re.sub(r'<[^>]+>', '', text)
+    # 解码 HTML 实体
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+    # 清理多余空白
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 def _html_to_markdown(html: str) -> str:
-    """HTML 转 Markdown"""
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, "html.parser")
-        # 移除无用标签
-        for tag in soup(["script", "style", "nav", "footer", "aside", "iframe"]):
-            tag.extract()
-
-        md_parts = []
-        for elem in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'pre', 'code', 'blockquote']):
-            tag = elem.name
-            text = elem.get_text(strip=True)
-            if not text:
-                continue
-            if tag == 'h1':
-                md_parts.append(f"# {text}")
-            elif tag == 'h2':
-                md_parts.append(f"## {text}")
-            elif tag == 'h3':
-                md_parts.append(f"### {text}")
-            elif tag == 'h4':
-                md_parts.append(f"#### {text}")
-            elif tag == 'li':
-                md_parts.append(f"- {text}")
-            elif tag == 'pre':
-                md_parts.append(f"```\n{text}\n```")
-            elif tag == 'code':
-                md_parts.append(f"`{text}`")
-            elif tag == 'blockquote':
-                md_parts.append(f"> {text}")
-            else:
-                md_parts.append(text)
-
-        return "\n\n".join(md_parts)
-    except ImportError:
-        return _html_to_text(html)
+    """HTML 转 Markdown（纯 regex，无外部依赖）"""
+    # 移除无用标签
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<aside[^>]*>.*?</aside>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<iframe[^>]*>.*?</iframe>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # 转换标题
+    text = re.sub(r'<h1[^>]*>(.*?)</h1>', r'\n# \1\n', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<h2[^>]*>(.*?)</h2>', r'\n## \1\n', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<h3[^>]*>(.*?)</h3>', r'\n### \1\n', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<h4[^>]*>(.*?)</h4>', r'\n#### \1\n', text, flags=re.DOTALL | re.IGNORECASE)
+    # 转换列表
+    text = re.sub(r'<li[^>]*>(.*?)</li>', r'\n- \1', text, flags=re.DOTALL | re.IGNORECASE)
+    # 转换代码块
+    text = re.sub(r'<pre[^>]*><code[^>]*>(.*?)</code></pre>', r'\n```\n\1\n```\n', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<pre[^>]*>(.*?)</pre>', r'\n```\n\1\n```\n', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', text, flags=re.DOTALL | re.IGNORECASE)
+    # 转换引用
+    text = re.sub(r'<blockquote[^>]*>(.*?)</blockquote>', lambda m: '\n> ' + m.group(1).strip().replace('\n', '\n> ') + '\n', text, flags=re.DOTALL | re.IGNORECASE)
+    # 段落换行
+    text = re.sub(r'<(?:br|p|div)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(?:p|div)>', '\n', text, flags=re.IGNORECASE)
+    # 移除所有剩余标签
+    text = re.sub(r'<[^>]+>', '', text)
+    # 解码 HTML 实体
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+    # 清理
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 def fetch(url: str, as_markdown: bool = True, max_length: int = 10000) -> str:

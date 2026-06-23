@@ -22,6 +22,7 @@ from collections import Counter
 from typing import Optional, List, Tuple, Dict
 
 from taiji.core.memory_watchdog import memory_guarded, MemoryWatchdog
+from taiji.services.settings_service import load_settings, update_settings
 from taiji.tools.file_parser import parse_file_to_text
 
 logger = logging.getLogger("RAG")
@@ -79,38 +80,24 @@ class RAGConfig:
                 cls._instance._load_from_settings()
             return cls._instance
 
-    def _settings_path(self) -> str:
-        return os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "app_settings.json"
-        )
-
     def _load_from_settings(self):
-        """从 app_settings.json 加载 RAG 配置"""
-        path = self._settings_path()
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for key in self.DEFAULTS:
-                    settings_key = f"rag_{key}"
-                    if settings_key in data:
-                        self._config[key] = data[settings_key]
-            except Exception as e:
-                logger.warning(f"加载 RAG 配置失败: {e}")
+        """Load persisted RAG strategy settings from the unified settings store."""
+        try:
+            data = load_settings()
+            for key in self.DEFAULTS:
+                settings_key = f"rag_{key}"
+                if settings_key in data:
+                    self._config[key] = data[settings_key]
+        except Exception as e:
+            logger.warning(f"Failed to load RAG settings: {e}")
 
     def save_to_settings(self):
         """将 RAG 配置保存到 app_settings.json"""
-        path = self._settings_path()
         try:
-            data = {}
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+            updates = {}
             for key, value in self._config.items():
-                data[f"rag_{key}"] = value
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                updates[f"rag_{key}"] = value
+            update_settings(updates)
         except Exception as e:
             logger.warning(f"保存 RAG 配置失败: {e}")
 

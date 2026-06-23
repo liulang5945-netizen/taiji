@@ -1,43 +1,53 @@
-"""
-测试共享 Fixtures
-"""
+﻿"""Test fixtures shared by the suite."""
+
 import json
 import os
 import sys
+
 import pytest
 
-# 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("TAIJI_BASE_DIR", os.path.abspath("."))
 
 
 @pytest.fixture
 def client():
-    """创建 FastAPI 测试客户端（缺少 torch 时自动跳过）"""
+    """Create a FastAPI test client without startup side effects."""
     try:
         import torch  # noqa: F401
     except ImportError:
-        pytest.skip("torch 未安装，跳过需要 API 客户端的测试")
+        pytest.skip("torch is not installed; skipping API client tests")
+
     from fastapi.testclient import TestClient
-    from api.app import app
-    return TestClient(app)
+    from api.app import create_app
+
+    return TestClient(create_app(startup_tasks=False))
 
 
 @pytest.fixture
 def sample_jsonl(tmp_path):
-    """创建临时 JSONL 测试数据集"""
+    """Create a temporary JSONL dataset."""
     path = tmp_path / "test.jsonl"
-    data = [{"instruction": f"问题{i}", "output": f"答案{i}"} for i in range(20)]
-    path.write_text("\n".join(json.dumps(d, ensure_ascii=False) for d in data), encoding="utf-8")
+    data = [{"instruction": f"question{i}", "output": f"answer{i}"} for i in range(20)]
+    path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in data), encoding="utf-8")
     return str(path)
 
 
 @pytest.fixture
 def sample_alpaca(tmp_path):
-    """创建 Alpaca 格式测试数据集"""
+    """Create a temporary Alpaca-style dataset."""
     path = tmp_path / "alpaca.json"
     data = [
-        {"instruction": "解释机器学习", "input": "", "output": "机器学习是AI的一个分支..."},
-        {"instruction": "写一个排序算法", "input": "Python", "output": "def sort(arr):..."},
+        {
+            "instruction": "Explain machine learning",
+            "input": "",
+            "output": "Machine learning is a branch of AI.",
+        },
+        {
+            "instruction": "Write a sorting function",
+            "input": "Python",
+            "output": "def sort(arr): ...",
+        },
     ] * 10
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return str(path)
@@ -45,7 +55,7 @@ def sample_alpaca(tmp_path):
 
 @pytest.fixture
 def tmp_persist_dir(tmp_path):
-    """临时持久化目录"""
-    d = tmp_path / "persist"
-    d.mkdir()
-    return str(d)
+    """Create a temporary persistence directory."""
+    persist_dir = tmp_path / "persist"
+    persist_dir.mkdir()
+    return str(persist_dir)

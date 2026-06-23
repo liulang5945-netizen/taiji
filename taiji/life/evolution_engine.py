@@ -78,6 +78,22 @@ class EvolutionEngine:
         "failure_rate_threshold": 0.3,     # 失败率 > 30% 时触发紧急进化
         "new_domain_threshold": 3,         # 发现 3 个新领域时触发
     }
+
+    # 递归蒸馏进化阈值
+    DISTILLATION_THRESHOLDS = {
+        "growth_value_max": 90,            # 成长值达到 90% 时考虑进化
+        "loss_plateau_steps": 1000,        # Loss 连续 1000 步不降时考虑进化
+        "task_failure_rate": 0.4,          # 任务失败率 > 40% 时考虑进化
+        "knowledge_saturation": 0.8,       # 知识饱和度 > 80% 时考虑进化
+    }
+
+    # 进化路线（态极递归蒸馏）
+    EVOLUTION_PATH = [
+        {"name": "Taiji-Seed", "base": "Qwen/Qwen2.5-0.5B", "params": "0.5B"},
+        {"name": "Taiji-S1", "base": "custom", "params": "1B"},
+        {"name": "Taiji-M1", "base": "custom", "params": "3B"},
+        {"name": "Taiji-L1", "base": "custom", "params": "7B"},
+    ]
     
     def __init__(
         self,
@@ -96,7 +112,7 @@ class EvolutionEngine:
         self.evolve_callback = evolve_callback
         self._lock = threading.Lock()
         
-        os.makedirs(data_dir, exist_ok=True)
+        self._data_dir_ready = False
         
         # 成长指标
         self.metrics = GrowthMetrics()
@@ -119,7 +135,95 @@ class EvolutionEngine:
         
         logger.info(f"EvolutionEngine initialized: phase={self.metrics.current_phase}, "
                     f"tasks={self.metrics.tasks_completed}")
-    
+
+    # ─── 递归蒸馏进化检查 ──────────────────────────────
+
+    def check_evolution_ready(self) -> dict:
+        """
+        检查态极是否准备好进化（扩大规模）。
+
+        态极递归蒸馏的核心：模型自己决定什么时候长大。
+        不是人类设定阈值，而是模型根据自身状态判断。
+
+        Returns:
+            {
+                "ready": bool,
+                "reason": str,
+                "current_generation": str,
+                "next_generation": str,
+                "metrics": dict,
+            }
+        """
+        with self._lock:
+            reasons = []
+            ready = False
+
+            # 检查成长值
+            growth_value = self._calculate_growth_value()
+            if growth_value >= self.DISTILLATION_THRESHOLDS["growth_value_max"]:
+                reasons.append(f"成长值达到 {growth_value:.0f}%（阈值 {self.DISTILLATION_THRESHOLDS['growth_value_max']}%）")
+
+            # 检查任务失败率
+            total = self.metrics.tasks_completed + self.metrics.tasks_failed
+            if total > 20:
+                fail_rate = self.metrics.tasks_failed / total
+                if fail_rate >= self.DISTILLATION_THRESHOLDS["task_failure_rate"]:
+                    reasons.append(f"任务失败率 {fail_rate:.0%}（阈值 {self.DISTILLATION_THRESHOLDS['task_failure_rate']:.0%}）")
+
+            # 检查知识饱和度
+            if self.metrics.knowledge_domains:
+                avg_mastery = sum(self.metrics.knowledge_domains.values()) / len(self.metrics.knowledge_domains)
+                if avg_mastery >= self.DISTILLATION_THRESHOLDS["knowledge_saturation"]:
+                    reasons.append(f"知识饱和度 {avg_mastery:.0%}（阈值 {self.DISTILLATION_THRESHOLDS['knowledge_saturation']:.0%}）")
+
+            # 至少满足 2 个条件才触发进化
+            if len(reasons) >= 2:
+                ready = True
+
+            # 确定当前和下一代
+            current_gen = self._get_current_generation()
+            next_gen = self._get_next_generation(current_gen)
+
+            return {
+                "ready": ready,
+                "reason": "; ".join(reasons) if reasons else "尚未达到进化阈值",
+                "current_generation": current_gen["name"],
+                "next_generation": next_gen["name"] if next_gen else "已是最新",
+                "metrics": {
+                    "growth_value": growth_value,
+                    "tasks_completed": self.metrics.tasks_completed,
+                    "tasks_failed": self.metrics.tasks_failed,
+                    "current_phase": self.metrics.current_phase,
+                    "knowledge_domains": len(self.metrics.knowledge_domains),
+                },
+            }
+
+    def _calculate_growth_value(self) -> float:
+        """计算成长值（0-100）"""
+        # 基于任务完成数、工具使用、知识领域综合计算
+        task_score = min(self.metrics.tasks_completed / 100, 1.0) * 30
+        tool_score = min(self.metrics.tool_calls_correct / 50, 1.0) * 30
+        domain_score = min(len(self.metrics.knowledge_domains) / 10, 1.0) * 20
+        phase_score = {"infant": 0, "child": 5, "adolescent": 10, "adult": 20}.get(
+            self.metrics.current_phase, 0
+        )
+        return task_score + tool_score + domain_score + phase_score
+
+    def _get_current_generation(self) -> dict:
+        """获取当前进化代际"""
+        # 根据模型参数量判断
+        return self.EVOLUTION_PATH[0]  # 默认第一代
+
+    def _get_next_generation(self, current: dict) -> Optional[dict]:
+        """获取下一代"""
+        try:
+            idx = self.EVOLUTION_PATH.index(current)
+            if idx + 1 < len(self.EVOLUTION_PATH):
+                return self.EVOLUTION_PATH[idx + 1]
+        except ValueError:
+            pass
+        return None
+
     # ─── 事件记录 ───────────────────────────────────
     
     def record_task_success(self, task: str, steps: List[dict], final_answer: str):
@@ -440,8 +544,15 @@ class EvolutionEngine:
     
     # ─── 持久化 ─────────────────────────────────────
     
+    def _ensure_data_dir(self):
+        """延迟创建数据目录（只在首次写入时创建）"""
+        if not self._data_dir_ready:
+            os.makedirs(self.data_dir, exist_ok=True)
+            self._data_dir_ready = True
+
     def _save_metrics(self):
         """保存成长指标"""
+        self._ensure_data_dir()
         path = os.path.join(self.data_dir, "growth_metrics.json")
         data = {
             "tasks_completed": self.metrics.tasks_completed,
@@ -482,6 +593,7 @@ class EvolutionEngine:
     
     def _save_evolution_report(self, report: dict):
         """保存进化报告"""
+        self._ensure_data_dir()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = os.path.join(self.data_dir, f"evolution_report_{timestamp}.json")
         try:

@@ -8,3 +8,8 @@ from taiji.multimodal.video_engine import *  # noqa: F401,F403
 from taiji.multimodal.screen_reader import *  # noqa: F401,F403
 from taiji.multimodal.voice_interface import *  # noqa: F401,F403
 from taiji.multimodal.taiji_multimodal import *  # noqa: F401,F403
+
+# 新增多模态输出引擎
+from taiji.multimodal.speech_engine import SpeechEngine
+from taiji.multimodal.image_engine import ImageEngine
+from taiji.multimodal.output_engine import MultimodalOutputEngine

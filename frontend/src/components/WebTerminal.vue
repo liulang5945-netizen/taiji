@@ -22,7 +22,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useAppStore } from '../stores/appStore.js';
 import { useRuntimeStore } from '../stores/runtimeStore.js';
-import { API_BASE } from '../composables/useApi.js';
+import { API_BASE } from '../composables/apiClient.js';
 import '@xterm/xterm/css/xterm.css';
 
 const appStore = useAppStore();
@@ -55,6 +55,7 @@ let term = null;
 let fitAddon = null;
 let ws = null;
 let reconnectTimer = null;
+let resizeObserver = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT = 8;
 const BASE_DELAY = 2000;
@@ -75,10 +76,8 @@ function getWsUrl() {
       wsBase = `${protocol}//${loc.hostname}:8000`;
     }
   } else {
-    // 开发环境：API_BASE 为空，Vite 代理 /ws 到后端 8000 端口
-    const loc = window.location;
-    const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    wsBase = `${protocol}//${loc.host}`;
+    // 开发环境：直连后端 8000 端口
+    wsBase = 'ws://127.0.0.1:8000';
   }
 
   const params = new URLSearchParams();
@@ -121,7 +120,7 @@ function initTerminal() {
   });
 
   // 窗口大小变化时通知服务端
-  const resizeObserver = new ResizeObserver(() => {
+  resizeObserver = new ResizeObserver(() => {
     if (fitAddon) fitAddon.fit();
     if (ws && ws.readyState === WebSocket.OPEN && term) {
       ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
@@ -135,16 +134,22 @@ function connectWs() {
     return;
   }
 
+  if (runtimeStore.auth.enabled && !localStorage.getItem('jwt_token')) {
+    connectionStatus.value = 'disconnected';
+    connectionError.value = '需要登录后连接终端';
+    runtimeStore.syncTerminal('disconnected', connectionError.value);
+    term?.writeln('\r\n\x1b[33m终端需要登录认证，请在系统设置完成登录后点击重连\x1b[0m');
+    return;
+  }
+
   connectionStatus.value = 'connecting';
   connectionError.value = '';
   runtimeStore.syncTerminal('connecting');
   const url = getWsUrl();
-  console.log('[Terminal] 尝试连接:', url);
 
   try {
     ws = new WebSocket(url);
   } catch (e) {
-    console.error('[Terminal] WebSocket 创建失败:', e);
     connectionStatus.value = 'disconnected';
     connectionError.value = `创建失败: ${e.message}`;
     runtimeStore.syncTerminal('disconnected', connectionError.value);
@@ -153,7 +158,6 @@ function connectWs() {
   }
 
   ws.onopen = () => {
-    console.log('[Terminal] WebSocket 已连接');
     connectionStatus.value = 'connected';
     connectionError.value = '';
     runtimeStore.syncTerminal('connected');
@@ -174,7 +178,7 @@ function connectWs() {
       } else if (msg.type === 'error') {
         connectionError.value = normalizeTerminalError(msg.data);
         runtimeStore.syncTerminal('disconnected', connectionError.value);
-        term?.writeln(`\r\n\x1b[31m错误: ${msg.data}\x1b[0m`);
+        term?.writeln(`\r\n\x1b[31m${connectionError.value}\x1b[0m`);
       }
     } catch (e) {
       term?.write(event.data);
@@ -182,14 +186,12 @@ function connectWs() {
   };
 
   ws.onerror = (e) => {
-    console.error('[Terminal] WebSocket error:', e);
     connectionStatus.value = 'disconnected';
     connectionError.value = '连接异常，请检查后端服务是否运行';
     runtimeStore.syncTerminal('disconnected', connectionError.value);
   };
 
   ws.onclose = (event) => {
-    console.log(`[Terminal] WebSocket 关闭: code=${event.code} reason="${event.reason}"`);
     connectionStatus.value = 'disconnected';
     clearTimeout(reconnectTimer);
 
@@ -207,7 +209,7 @@ function connectWs() {
     } else if (event.code === 1006) {
       connectionError.value = '服务未启动或网络不可达';
       runtimeStore.syncTerminal('disconnected', connectionError.value);
-      term?.writeln('\r\n\x1b[31m连接被拒绝 (code 1006)：后端服务可能未运行，或 WebSocket 路径未正确代理\x1b[0m');
+      term?.writeln('\r\n\x1b[31m终端通道暂不可用，正在等待本地服务恢复\x1b[0m');
     }
 
     if (reconnectAttempts >= MAX_RECONNECT) {
@@ -234,7 +236,7 @@ function normalizeTerminalError(message) {
   return text || '终端连接异常'
 }
 
-function reconnect() {
+async function reconnect() {
   if (ws) {
     ws.close();
     ws = null;
@@ -242,6 +244,7 @@ function reconnect() {
   clearTimeout(reconnectTimer);
   reconnectAttempts = 0;
   if (term) term.clear();
+  await runtimeStore.refreshAuth().catch(() => {});
   connectWs();
 }
 
@@ -253,28 +256,30 @@ watch(() => appStore.currentTheme, () => {
   if (term) term.options.theme = isDarkMode() ? darkTheme : lightTheme
 })
 
-onMounted(() => {
+onMounted(async () => {
   initTerminal();
+  await runtimeStore.refreshAuth().catch(() => {});
   connectWs();
 });
 
 onBeforeUnmount(() => {
   clearTimeout(reconnectTimer);
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
   if (ws) { ws.close(); ws = null; }
   if (term) { term.dispose(); term = null; }
 });
 </script>
 
 <style scoped>
-.terminal-wrapper { display: flex; flex-direction: column; height: 100%; background: var(--bg-card); }
-.terminal-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: var(--bg); border-bottom: 1px solid var(--border); min-height: 30px; }
+.terminal-wrapper { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg-card); }
+.terminal-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 2px 10px; background: var(--bg); border-bottom: 1px solid var(--border); min-height: 24px; }
 .terminal-title { font-size: 12px; color: var(--text-muted); font-weight: 500; display: flex; align-items: center; gap: 4px; }
 .terminal-actions { display: flex; gap: 2px; }
 .btn-term { background: transparent; border: 1px solid transparent; cursor: pointer; font-size: 13px; padding: 3px 6px; border-radius: 4px; transition: all 0.15s ease; }
 .btn-term:hover { background: var(--bg-hover); border-color: var(--border); }
-.terminal-container { flex: 1; padding: 4px; overflow: hidden; }
+.terminal-container { flex: 1 1 0; min-height: 0; padding: 4px; overflow: hidden; }
 .terminal-container :deep(.xterm) { height: 100%; }
-.terminal-status { padding: 2px 10px; font-size: 11px; min-height: 20px; display: flex; align-items: center; gap: 4px; }
+.terminal-status { padding: 1px 10px; font-size: 11px; min-height: 18px; display: flex; align-items: center; gap: 4px; }
 .terminal-status::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .terminal-status.connected { color: var(--success); background: var(--success-light); }
 .terminal-status.connected::before { background: var(--success); }

@@ -9,12 +9,41 @@ import shutil
 import sys
 import threading
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 
 from taiji.core.utils import get_external_path
 
 logger = logging.getLogger("ApiServer.Update")
 router = APIRouter()
+
+
+def _require_admin_auth(request: Request):
+    """
+    验证管理员权限（用于敏感的更新/补丁操作）
+
+    安全策略：
+    - 认证启用时：必须提供有效的管理员 Token
+    - 认证未启用时：拒绝访问（更新操作必须在认证保护下进行）
+    """
+    from taiji.core.security import AuthManager
+    auth = AuthManager()
+
+    if not auth.enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="更新操作需要启用认证。请先启用认证后再执行此操作。"
+        )
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="缺少认证 Token")
+
+    token = auth_header[7:]
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
+    return payload
 
 
 @router.get("/api/system/version")
@@ -84,8 +113,9 @@ def check_update(req: dict = {}):
 
 
 @router.post("/api/system/apply_update")
-def apply_update(req: dict = {}):
-    """应用更新（从 URL 下载并安装更新包）"""
+def apply_update(request: Request, req: dict = {}):
+    """应用更新（从 URL 下载并安装更新包）- 需要管理员认证"""
+    _require_admin_auth(request)
     try:
         from build_scripts.updater import UpdatePackageInstaller
         url = req.get("url", "")
@@ -105,8 +135,9 @@ def apply_update(req: dict = {}):
 
 
 @router.post("/api/system/upload_update")
-async def upload_update(file: UploadFile = File(...)):
-    """上传并安装更新包（手动模式）"""
+async def upload_update(request: Request, file: UploadFile = File(...)):
+    """上传并安装更新包（手动模式）- 需要管理员认证"""
+    _require_admin_auth(request)
     import zipfile
     try:
         from build_scripts.updater import UpdatePackageInstaller
@@ -145,8 +176,9 @@ async def upload_update(file: UploadFile = File(...)):
 
 
 @router.post("/api/system/reload_modules")
-def reload_modules(req: dict = {}):
-    """热重载 Python 模块"""
+def reload_modules(req: dict, request: Request):
+    """热重载 Python 模块 - 需要管理员认证"""
+    _require_admin_auth(request)
     try:
         from build_scripts.updater import ModuleHotReloader
         reloader = ModuleHotReloader()
@@ -170,8 +202,9 @@ def reload_modules(req: dict = {}):
 
 
 @router.post("/api/system/set_update_url")
-def set_update_url(req: dict = {}):
-    """设置更新检查 URL"""
+def set_update_url(req: dict, request: Request):
+    """设置更新检查 URL - 需要管理员认证"""
+    _require_admin_auth(request)
     try:
         from build_scripts.updater import VersionManager
         url = req.get("url", "")
@@ -202,14 +235,18 @@ def list_patches():
             }
             patch_details.append(detail)
         return {"status": "ok", "patches": patches, "patch_details": patch_details}
+    except ImportError:
+        logger.info("Patch manager unavailable; returning empty patch list")
+        return {"status": "ok", "patches": [], "patch_details": []}
     except Exception as e:
         logger.error(f"列出补丁失败: {e}")
         return {"status": "error", "message": str(e)}
 
 
 @router.post("/api/system/upload_patch")
-async def upload_patch(file: UploadFile = File(...), target_path: str = Form("")):
-    """上传单个 Python 文件作为热更新补丁"""
+async def upload_patch(request: Request, file: UploadFile = File(...), target_path: str = Form("")):
+    """上传单个 Python 文件作为热更新补丁 - 需要管理员认证"""
+    _require_admin_auth(request)
     try:
         filename = file.filename or "patch.py"
         if not filename.endswith(".py"):
@@ -264,8 +301,9 @@ async def upload_patch(file: UploadFile = File(...), target_path: str = Form("")
 
 
 @router.post("/api/system/upload_ui")
-async def upload_ui_zip(file: UploadFile = File(...)):
-    """接收拖拽的 frontend.zip 并自动覆盖 update_frontend"""
+async def upload_ui_zip(request: Request, file: UploadFile = File(...)):
+    """接收拖拽的 frontend.zip 并自动覆盖 update_frontend - 需要管理员认证"""
+    _require_admin_auth(request)
     import zipfile
     try:
         ui_dir = get_external_path("update_frontend")

@@ -1,0 +1,14 @@
+{
+  "tool_mappings": {
+    "search": 32150
+  },
+  "next_tool_id": 32151,
+  "special_tokens": {
+    "<think>": 32000,
+    "</think>": 32001,
+    "<tool_call>": 32002,
+    "<tool_result>": 32003,
+    "<final_answer>": 32004,
+    "search": 32150
+  }
+}

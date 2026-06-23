@@ -64,6 +64,7 @@ class ModelSelfBackbone(nn.Module):
                 num_kv_heads=config.num_key_value_heads,
                 intermediate_size=config.intermediate_size,
                 rms_norm_eps=config.rms_norm_eps,
+                bias=getattr(config, 'attention_bias', False),
             )
             for _ in range(config.num_hidden_layers)
         ])
@@ -88,8 +89,8 @@ class ModelSelfBackbone(nn.Module):
         """
         bsz, seqlen = tokens.shape
 
-        # 词嵌入 (带缩放)
-        h = self.embedding(tokens) * math.sqrt(self.config.hidden_size)
+        # 词嵌入（不缩放，与 Qwen2/LLaMA 保持一致）
+        h = self.embedding(tokens)
 
         # 因果掩码 — 使用 triu 一次性生成，避免逐行循环
         start_pos = kv_cache[0][0].shape[1] if kv_cache is not None else 0

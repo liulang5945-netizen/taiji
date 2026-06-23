@@ -5,6 +5,7 @@ import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
+import DOMPurify from 'dompurify';
 
 const marked = new Marked(
   markedHighlight({
@@ -23,7 +24,7 @@ marked.use({
       return `<div class="code-block-wrapper">
   <div class="code-header">
     <span class="code-lang">${language}</span>
-    <button class="code-copy-btn" onclick="copyCodeBlock(this)">📋 复制</button>
+    <button class="code-copy-btn" data-action="copy-code">📋 复制</button>
   </div>
   <pre><code class="hljs language-${language}">${code}</code></pre>
   </div>`;
@@ -50,18 +51,23 @@ const safeCopyText = async (text) => {
   document.body.removeChild(textArea);
 };
 
-// 注册全局复制函数
-window.copyCodeBlock = async (btn) => {
-  try {
-    const pre = btn.parentElement.nextElementSibling;
-    await safeCopyText(pre.innerText);
-    const oldText = btn.innerText;
-    btn.innerText = '✅ 成功';
-    setTimeout(() => { btn.innerText = oldText; }, 2000);
-  } catch (err) {
-    console.error('复制失败', err);
-  }
-};
+// 事件委托：处理代码块复制按钮点击
+if (typeof document !== 'undefined' && !window.__taijiMarkdownCopyHandler) {
+  window.__taijiMarkdownCopyHandler = true;
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="copy-code"]');
+    if (!btn) return;
+    try {
+      const pre = btn.parentElement.nextElementSibling;
+      await safeCopyText(pre.innerText);
+      const oldText = btn.innerText;
+      btn.innerText = '✅ 成功';
+      setTimeout(() => { btn.innerText = oldText; }, 2000);
+    } catch (err) {
+      console.error('复制失败', err);
+    }
+  });
+}
 
 /**
  * 解析消息内容，分离思考过程和最终回答
@@ -153,9 +159,17 @@ function parseMessageContent(text) {
 }
 
 export function useMarkdown() {
+  // DOMPurify 配置：允许 img 标签及常见图片属性
+  const purifyConfig = {
+    ADD_TAGS: ['img'],
+    ADD_ATTR: ['src', 'alt', 'width', 'height', 'loading', 'decoding', 'style', 'title'],
+    ALLOW_DATA_ATTR: false,
+  };
+
   const renderMarkdown = (text) => {
     if (!text) return '';
-    return marked.parse(text);
+    const raw = marked.parse(text);
+    return typeof raw === 'string' ? DOMPurify.sanitize(raw, purifyConfig) : raw;
   };
 
   const formatDuration = (seconds) => {

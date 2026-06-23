@@ -33,17 +33,18 @@ class ModelSelfTokenizer:
                            如果为 None，使用字符级回退分词器
         """
         self.sp = None
+        self.sp_model_path = sp_model_path if sp_model_path and os.path.exists(sp_model_path) else None
         self._tool_name_to_id: Dict[str, int] = {}
         self._id_to_tool_name: Dict[int, str] = {}
         self._next_tool_id = SPECIAL_TOKENS["tool_name_base"]
 
         # 尝试加载 SentencePiece
-        if sp_model_path and os.path.exists(sp_model_path):
+        if self.sp_model_path:
             try:
                 import sentencepiece as spm
                 self.sp = spm.SentencePieceProcessor()
-                self.sp.Load(sp_model_path)
-                logger.info(f"Loaded SentencePiece model: {sp_model_path}")
+                self.sp.Load(self.sp_model_path)
+                logger.info(f"Loaded SentencePiece model: {self.sp_model_path}")
             except ImportError:
                 logger.warning("sentencepiece not installed, using char-level fallback")
             except Exception as e:

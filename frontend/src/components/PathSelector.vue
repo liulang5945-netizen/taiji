@@ -64,7 +64,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:modelValue', 'browse', 'open', 'validate']);
-import { API_BASE } from '../composables/useApi.js';
+import { API_BASE, authFetch } from '../composables/apiClient.js';
 
 const inputRef = ref(null);
 const error = ref('');
@@ -91,7 +91,7 @@ const validateAndEmit = async () => {
   if (!path) return;
   emit('validate', path);
   try {
-    const res = await fetch(`${API_BASE}/api/system/validate_path`, {
+    const res = await authFetch(`${API_BASE}/api/system/validate_path`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, type: props.type }),
@@ -113,7 +113,7 @@ const browse = async () => {
     const endpoint = props.type === 'folder'
       ? `${API_BASE}/api/system/select_folder?title=${title}`
       : `${API_BASE}/api/system/select_file`;
-    const res = await fetch(endpoint);
+    const res = await authFetch(endpoint);
     const data = await res.json();
     if (data.status === 'ok' && data.path) {
       emit('update:modelValue', data.path);
@@ -131,7 +131,7 @@ const openInExplorer = async () => {
   if (!props.modelValue) return;
   emit('open', props.modelValue);
   try {
-    await fetch(`${API_BASE}/api/system/open_folder`, {
+    await authFetch(`${API_BASE}/api/system/open_folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: props.modelValue }),

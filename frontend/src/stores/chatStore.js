@@ -180,7 +180,7 @@ export const useChatStore = defineStore('chat', () => {
     isReceiving.value = false
 
     // 记录引擎类型供重新生成使用
-    lastEngineType.value = engineType || 'taiji'
+    lastEngineType.value = 'agent'  // 统一使用 ReAct 引擎
     // 更新全局接收状态
     setChatReceiving(true)
 
@@ -216,7 +216,7 @@ export const useChatStore = defineStore('chat', () => {
           prompt: promptInput,
           system_prompt: sysPrompt,
           history,
-          engine: engineType || 'taiji',
+          engine: 'agent',  // 统一使用 ReAct 引擎
           agent_max_iterations: Number(runtimeStore.agentPrefs.maxIterations || 10),
           agent_temperature: Number(runtimeStore.agentPrefs.temperature || 0.7)
         }),

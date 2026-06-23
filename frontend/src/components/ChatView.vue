@@ -3,12 +3,12 @@
     <header class="chat-topbar">
       <div class="chat-title-block">
         <div class="title-row">
-          <Brain :size="20" />
+          <Brain :size="18" />
           <h1>{{ chatStore.currentSessionName || '态极对话' }}</h1>
         </div>
         <div class="life-strip">
           <span class="life-chip" :class="runtimeStore.life.life_state || 'idle'">
-            <Activity :size="13" />
+            <Activity :size="12" />
             {{ lifeStateText }}
           </span>
           <span class="metric-chip">精力 {{ energyPercent }}%</span>
@@ -16,20 +16,9 @@
           <span class="metric-chip">好奇 {{ curiosityPercent }}%</span>
         </div>
       </div>
-
       <div class="topbar-actions">
-        <div class="mode-switch" role="group" aria-label="对话模式">
-          <button :class="{ active: engineModel === 'taiji' }" @click="setEngine('taiji')">
-            <Brain :size="14" />
-            思维
-          </button>
-          <button :class="{ active: engineModel === 'agent' }" @click="setEngine('agent')">
-            <Zap :size="14" />
-            行动
-          </button>
-        </div>
         <button class="icon-btn" @click="chatStore.clearCurrentChat()" :title="t('clear_history')">
-          <RotateCcw :size="16" />
+          <RotateCcw :size="15" />
         </button>
       </div>
     </header>
@@ -42,142 +31,51 @@
             <div>
               <strong>{{ runtimeNotice.title }}</strong>
               <p>{{ runtimeNotice.message }}</p>
-              <div v-if="runtimeNotice.canDo" class="runtime-can-do">
-                <span v-for="action in runtimeNotice.canDo" :key="action" class="can-do-tag">{{ action }}</span>
-              </div>
-              <div v-if="runtimeStore.memory" class="runtime-meta-row">
-                <span>{{ runtimeStore.memory.message }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 态极生命表达 -->
-          <div v-if="runtimeStore.lifeExpressions.length" class="life-expressions">
-            <div v-for="(expr, i) in runtimeStore.lifeExpressions.slice(0, 2)" :key="i"
-                 class="life-expression" :class="'life-' + expr.type">
-              <span class="life-expr-emoji">{{ expr.emoji }}</span>
-              <span class="life-expr-text">{{ expr.text }}</span>
             </div>
           </div>
 
           <div v-if="chatStore.messages.length === 0" class="empty-state">
-            <div class="empty-symbol"><Bot :size="34" /></div>
-            <h2>开始一次对话</h2>
-            <p>{{ emptyStateCopy }}</p>
-          </div>
-
-          <div v-if="chatStore.lifeNeeds && chatStore.isLoading" class="life-needs-indicator">
-            <span>饥饿 {{ Math.round(chatStore.lifeNeeds.hunger || 0) }}</span>
-            <span>疲劳 {{ Math.round(chatStore.lifeNeeds.fatigue || 0) }}</span>
-            <span>好奇 {{ Math.round(chatStore.lifeNeeds.curiosity || 0) }}</span>
-            <span>压力 {{ Math.round(chatStore.lifeNeeds.stress || 0) }}</span>
-          </div>
-
-          <article
-            v-for="(msg, index) in chatStore.messages"
-            :key="index"
-            :class="['message-row', msg.role]"
-          >
-            <div class="message-avatar">
-              <User v-if="msg.role === 'user'" :size="16" />
-              <Bot v-else :size="16" />
+            <div class="empty-glow-ring">
+              <img src="/logo.svg" alt="态极" class="empty-logo" />
             </div>
+            <h2 class="empty-title">态 极</h2>
+            <p class="empty-desc">把问题、文件或任务交给态极</p>
+            <div class="empty-hints">
+              <div class="hint-card" v-for="hint in quickHints" :key="hint.text" @click="chatStore.chatInput = hint.text">
+                <component :is="hint.icon" :size="15" />
+                <span>{{ hint.text }}</span>
+              </div>
+            </div>
+          </div>
 
+          <article v-for="(msg, index) in chatStore.messages" :key="msg.id"
+            :class="['message-row', msg.role]">
+            <div class="message-avatar">
+              <User v-if="msg.role === 'user'" :size="15" />
+              <Bot v-else :size="15" />
+            </div>
             <div class="message-main">
               <div class="message-meta">
                 <span>{{ msg.role === 'user' ? '你' : '态极' }}</span>
-                <span v-if="msg.role === 'assistant'" class="mode-label">
-                  {{ engineModel === 'agent' ? '行动回馈' : '思维回馈' }}
-                </span>
+                <span class="mode-label">态极回应</span>
               </div>
-
               <div class="bubble">
-                <div v-if="msg.role === 'user'">
-                  <div class="text-content">{{ msg.content }}</div>
-                  <div v-if="msg.attachments?.length" class="message-media-grid">
-                    <div v-for="(att, ai) in msg.attachments" :key="ai" class="message-media-card" :class="att.modality">
-                      <img v-if="mediaAttachmentUrl(att) && att.modality === 'image'" :src="mediaAttachmentUrl(att)" :alt="att.name" />
-                      <audio v-else-if="mediaAttachmentUrl(att) && att.modality === 'audio'" :src="mediaAttachmentUrl(att)" controls />
-                      <video v-else-if="mediaAttachmentUrl(att) && att.modality === 'video'" :src="mediaAttachmentUrl(att)" controls />
-                      <span v-else>{{ att.name }}</span>
-                    </div>
-                  </div>
-                </div>
-                <div v-else>
-                  <div v-if="parsedMessages[index]?.reasoning" class="reasoning-block">
-                    <button class="reasoning-toggle" @click="toggleReasoning(index)">
-                      <ChevronDown v-if="expandedReasonings[index]" :size="14" />
-                      <ChevronRight v-else :size="14" />
-                      <span>思考过程</span>
-                    </button>
-                    <div
-                      v-show="expandedReasonings[index]"
-                      class="reasoning-content markdown-body"
-                      v-html="renderMarkdown(parsedMessages[index].reasoning)"
-                    />
-                  </div>
-                  <div class="markdown-body" v-html="renderMarkdown(parsedMessages[index] ? parsedMessages[index].content : msg.content)" />
-                  <div v-if="mediaOutputs(index).length" class="message-media-grid output-media-grid">
-                    <div v-for="(media, mi) in mediaOutputs(index)" :key="mi" class="message-media-card" :class="media.modality">
-                      <img v-if="media.modality === 'image'" :src="media.url" :alt="media.label" />
-                      <audio v-else-if="media.modality === 'audio'" :src="media.url" controls />
-                      <video v-else-if="media.modality === 'video'" :src="media.url" controls />
-                      <a v-else :href="media.url" target="_blank" rel="noreferrer">{{ media.label }}</a>
-                    </div>
-                  </div>
-
-                  <div v-if="msg.toolCalls?.length" class="tool-cards">
-                    <div v-for="(tc, ti) in msg.toolCalls" :key="ti" class="tool-card" :class="tc.status">
-                      <div class="tool-card-header">
-                        <Zap :size="14" />
-                        <span class="tool-name">{{ tc.tool }}</span>
-                        <span class="tool-status" :class="tc.status">
-                          {{ tc.status === 'running' ? '执行中' : '完成' }}
-                        </span>
-                      </div>
-                      <div class="tool-trace">
-                        <div v-if="tc.args && Object.keys(tc.args).length" class="trace-step">
-                          <span class="trace-label">行动</span>
-                          <code>{{ JSON.stringify(tc.args, null, 2) }}</code>
-                        </div>
-                        <div v-if="tc.result" class="trace-step">
-                          <span class="trace-label">观察</span>
-                          <pre>{{ formatToolResult(tc.result) }}</pre>
-                        </div>
-                        <div v-else-if="tc.status === 'running'" class="trace-step muted">
-                          <span class="trace-label">观察</span>
-                          <span>等待工具返回...</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <div v-if="msg.role === 'user'" class="text-content">{{ msg.content }}</div>
+                <div v-else class="markdown-body" v-html="renderMarkdown(msg.content)" />
               </div>
-
               <div v-if="msg.role === 'assistant' && msg.content" class="msg-actions">
-                <button class="msg-action-btn" @click="copyMsg(msg.content)" title="复制">
-                  <Copy :size="14" />
-                </button>
-                <button class="msg-action-btn" @click="chatStore.regenerateMessage(index)" title="重新执行">
-                  <RotateCcw :size="14" />
-                </button>
+                <button class="msg-action-btn" @click="copyMsg(msg.content)" title="复制"><Copy :size="13" /></button>
+                <button class="msg-action-btn" @click="chatStore.regenerateMessage(msg.id)" title="重新生成"><RotateCcw :size="13" /></button>
               </div>
             </div>
           </article>
 
           <article v-if="chatStore.isLoading" class="message-row assistant thinking-row">
-            <div class="message-avatar breathing"><Bot :size="16" /></div>
+            <div class="message-avatar breathing"><Bot :size="15" /></div>
             <div class="message-main">
-              <div class="message-meta">
-                <span>态极</span>
-                <span class="mode-label">{{ chatStore.isReceiving ? '正在回应' : '正在启动' }}</span>
-              </div>
+              <div class="message-meta"><span>态极</span><span class="mode-label">{{ chatStore.isReceiving ? '正在回应' : '正在启动' }}</span></div>
               <div v-if="!chatStore.isReceiving" class="bubble loading-bubble">
-                <span class="thinking-animation">
-                  <span class="think-dot"></span>
-                  <span class="think-dot"></span>
-                  <span class="think-dot"></span>
-                </span>
+                <span class="thinking-animation"><span class="think-dot"></span><span class="think-dot"></span><span class="think-dot"></span></span>
               </div>
             </div>
           </article>
@@ -187,1210 +85,427 @@
       <footer class="composer-area">
         <div class="stop-container" v-if="chatStore.isReceiving">
           <button class="stop-btn" @click="chatStore.stopGeneration()">
-            <Square :size="14" fill="currentColor" />
-            中断执行
+            <Square :size="13" fill="currentColor" /> 中断执行
           </button>
         </div>
 
-        <div class="media-rail">
-          <label class="media-entry">
-            <input type="file" accept="image/*" multiple @change="onFileSelect" style="display:none" />
-            <ImageUp :size="16" />
-            <span>图片</span>
-          </label>
-          <label class="media-entry">
-            <input type="file" accept="audio/*" multiple @change="onFileSelect" style="display:none" />
-            <AudioLines :size="16" />
-            <span>语音</span>
-          </label>
-          <label class="media-entry">
-            <input type="file" accept="video/*" multiple @change="onFileSelect" style="display:none" />
-            <Video :size="16" />
-            <span>视频</span>
-          </label>
-          <button class="media-entry record-entry" :class="{ recording: isRecording }" @click="toggleRecording" :disabled="!recordingSupported">
+        <!-- 多模态工具栏 -->
+        <div class="multimodal-toolbar">
+          <button class="mm-btn" :class="{ active: isRecording }" @click="toggleVoice" title="语音输入">
             <Mic :size="16" />
-            <span>{{ isRecording ? '停止录音' : '语音交流' }}</span>
+            <span class="mm-label">{{ isRecording ? '停止' : '语音' }}</span>
           </button>
-        </div>
-
-        <div v-if="chatAttachments.length" class="chat-attachments-row">
-          <div v-for="(att, idx) in chatAttachments" :key="idx" class="chat-attachment-card" :class="att.modality">
-            <div class="attachment-preview" v-if="att.previewUrl && att.modality === 'image'">
-              <img :src="att.previewUrl" :alt="att.name" />
-            </div>
-            <div v-else-if="att.previewUrl && att.modality === 'audio'" class="attachment-preview audio-preview">
-              <audio :src="att.previewUrl" controls />
-            </div>
-            <div v-else-if="att.previewUrl && att.modality === 'video'" class="attachment-preview video-preview">
-              <video :src="att.previewUrl" controls />
-            </div>
-            <div class="chat-attachment-meta">
-              <span class="att-name">{{ att.name }}</span>
-              <small>{{ att.modality === 'image' ? '图片' : att.modality === 'audio' ? '语音' : att.modality === 'video' ? '视频' : '文件' }}</small>
-              <span v-if="att.uploading" class="att-state">上传中...</span>
-            </div>
-            <button class="att-remove" @click="removeAttachment(idx)"><X :size="12" /></button>
-          </div>
+          <label class="mm-btn" title="上传图片">
+            <ImageIcon :size="16" />
+            <span class="mm-label">图片</span>
+            <input type="file" accept="image/*" @change="onImageSelect" style="display:none" />
+          </label>
+          <label class="mm-btn" title="上传视频">
+            <Video :size="16" />
+            <span class="mm-label">视频</span>
+            <input type="file" accept="video/*" @change="onVideoSelect" style="display:none" />
+          </label>
+          <label class="mm-btn" title="上传文件">
+            <FileText :size="16" />
+            <span class="mm-label">文件</span>
+            <input type="file" multiple @change="onFileSelect" style="display:none" />
+          </label>
+          <button class="mm-btn" @click="toggleCamera" title="拍照/录像">
+            <Camera :size="16" />
+            <span class="mm-label">拍照</span>
+          </button>
         </div>
 
         <div class="input-container">
-          <label class="attach-btn" title="投喂文件/代码">
-            <Paperclip :size="18" />
-            <input type="file" multiple @change="onFileSelect" style="display:none" />
-          </label>
-          <n-input
-            ref="inputRef"
-            v-model:value="chatStore.chatInput"
-            type="textarea"
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-            :rows="1"
-            :autosize="{ minRows: 1, maxRows: 6 }"
-            :theme-overrides="{
-              borderRadius: '12px',
-              color: 'transparent',
-              colorFocus: 'transparent',
-              border: 'none',
-              borderHover: 'none',
-              borderFocus: 'none',
-              boxShadowFocus: 'none',
-            }"
-            @keydown="onKeydown"
-            @paste="onPaste"
-          />
-          <button
-            class="send-btn"
-            :disabled="!canSend"
-            @click="handleSend"
-            title="发送"
-          >
-            <Send :size="18" />
+          <textarea ref="inputRef" v-model="chatStore.chatInput"
+            :placeholder="inputPlaceholder"
+            rows="1" @keydown="onKeydown" />
+          <button class="send-btn" :class="{ unavailable: !canSend }" :disabled="!canSend" @click="handleSend" title="发送">
+            <Send :size="16" />
           </button>
         </div>
+        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 语音/图片/视频/文件</div>
       </footer>
     </section>
   </main>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted, inject } from 'vue'
-import {
-  Activity, User, Bot, RotateCcw, Copy, ChevronDown, ChevronRight,
-  Square, Paperclip, X, Send, Brain, Zap, ImageUp, AudioLines, Video, Mic
-} from 'lucide-vue-next'
+defineOptions({ name: 'ChatView' })
+import { ref, computed, watch, nextTick, onMounted, inject } from 'vue'
+import { Activity, User, Bot, RotateCcw, Copy, Square, Send, Brain, Lightbulb, Code, BookOpen, Mic, Image as ImageIcon, Video, FileText, Camera } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chatStore.js'
 import { useAppStore } from '@/stores/appStore.js'
 import { useRuntimeStore } from '@/stores/runtimeStore.js'
 import { useMarkdown } from '@/composables/useMarkdown.js'
-import { useChatUpload } from '@/composables/useChatUpload.js'
-import { useWorkspaceBridge } from '@/composables/useWorkspaceBridge.js'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
 const runtimeStore = useRuntimeStore()
 const { renderMarkdown } = useMarkdown()
-const workspaceBridge = useWorkspaceBridge()
 const toast = inject('toast', () => {})
-const t = (key, params) => appStore.t(key, params)
-
-// 注册聊天回调，让终端输出可以回流到聊天
-workspaceBridge.registerChatCallback((event) => {
-  if (event.type === 'error') {
-    chatStore.messages.push({ role: 'system', content: `🔧 ${event.content}`, timestamp: event.timestamp })
-  } else if (event.type === 'explanation') {
-    chatStore.messages.push({ role: 'assistant', content: event.content, timestamp: event.timestamp })
-  } else if (event.type === 'terminal') {
-    chatStore.messages.push({ role: 'system', content: `📟 ${event.content}`, timestamp: event.timestamp })
-  }
-})
+const t = (key) => appStore.t(key)
 
 const messagesArea = ref(null)
 const inputRef = ref(null)
-const isRecording = ref(false)
-const recordingSupported = computed(() => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined')
-let mediaRecorder = null
-let recordingChunks = []
-
-const engineModel = ref(localStorage.getItem('taiji_engine') || 'taiji')
-function setEngine(val) {
-  engineModel.value = val
-  localStorage.setItem('taiji_engine', val)
-}
+const engineModel = ref('agent')  // 统一使用 ReAct 引擎
 
 const energyPercent = computed(() => Math.max(0, 100 - (runtimeStore.life.needs?.fatigue || 0)).toFixed(0))
 const satietyPercent = computed(() => Math.max(0, 100 - (runtimeStore.life.needs?.hunger || 0)).toFixed(0))
 const curiosityPercent = computed(() => Math.max(0, runtimeStore.life.needs?.curiosity || 0).toFixed(0))
-
-const lifeStateText = computed(() => {
-  const s = runtimeStore.life.life_state || 'idle'
-  const map = {
-    idle: '清醒',
-    sleeping: '睡眠',
-    feeding: '吸收',
-    playing: '探索',
-    working: '执行',
-  }
-  return map[s] || s
-})
-
+const lifeStateText = computed(() => ({ idle: '清醒', sleeping: '睡眠', feeding: '吸收', playing: '探索', working: '执行' }[runtimeStore.life.life_state || 'idle'] || ''))
 const runtimeNotice = computed(() => runtimeStore.runtimeNotice)
 
-const emptyStateCopy = computed(() => {
-  if (runtimeNotice.value) return '你可以先整理任务、挂载资料或检查工具能力。'
-  return '把问题、文件或任务交给态极。'
-})
+const quickHints = [
+  { icon: Lightbulb, text: '解释一个概念' },
+  { icon: Code, text: '帮我写一段代码' },
+  { icon: BookOpen, text: '总结一篇文档' },
+]
 
-const canSend = computed(() => {
-  return (!!chatStore.chatInput.trim() || chatAttachments.some(att => !att.uploading))
-    && !chatStore.isLoading
-    && runtimeStore.health.state === 'connected'
-    && runtimeStore.health.modelLoaded
-})
+const canSend = computed(() =>
+  !!chatStore.chatInput.trim() && !chatStore.isLoading && runtimeStore.health.state === 'connected' && runtimeStore.health.modelLoaded
+)
 
-const parsedMessages = ref({})
-const expandedReasonings = ref({})
-
-function parseMessageContent(content) {
-  if (!content) return { content: '', reasoning: '' }
-  const thinkMatch = content.match(/<(?:think|thinking)>([\s\S]*?)<\/(?:think|thinking)>/)
-  if (thinkMatch) {
-    const reasoning = thinkMatch[1].trim()
-    const rest = content.replace(thinkMatch[0], '').trim()
-    return { content: rest, reasoning }
-  }
-  return { content, reasoning: '' }
-}
-
-function toMediaUrl(raw) {
-  if (!raw) return ''
-  const text = String(raw).trim().replace(/^["'`]+|["'`]+$/g, '')
-  if (/^(https?:|data:|blob:)/i.test(text)) return text
-  if (/^[a-zA-Z]:[\\/]/.test(text)) {
-    const name = text.split(/[\\/]/).pop()
-    if (text.includes('multimodal_uploads') && name) return `/multimodal_media/${encodeURIComponent(name)}`
-    const workspaceUrl = workspaceMediaUrlFromPath(text)
-    if (workspaceUrl) return workspaceUrl
-    return ''
-  }
-  return text
-}
-
-function workspaceMediaUrlFromPath(text) {
-  const normalized = String(text || '').replaceAll('\\', '/')
-  const marker = 'agent_workspace'
-  const idx = normalized.toLowerCase().indexOf(marker)
-  if (idx === -1) return ''
-  const rel = normalized.slice(idx + marker.length).replace(/^\/+/, '')
-  return rel ? `/workspace_data/${rel.split('/').map(encodeURIComponent).join('/')}` : ''
-}
-
-function mediaAttachmentUrl(att) {
-  if (!att) return ''
-  return att.previewUrl || att.publicUrl || toMediaUrl(att.savedPath)
-}
-
-function inferOutputModality(url) {
-  const clean = String(url || '').split('?')[0].toLowerCase()
-  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/.test(clean) || clean.startsWith('data:image/')) return 'image'
-  if (/\.(mp3|wav|ogg|flac|m4a|aac|webm)$/.test(clean) || clean.startsWith('data:audio/')) return 'audio'
-  if (/\.(mp4|mov|mkv|avi|webm)$/.test(clean) || clean.startsWith('data:video/')) return 'video'
-  return 'file'
-}
-
-function extractMediaOutputs(text) {
-  const result = []
-  const source = String(text || '')
-  const patterns = [
-    /(?:生成|输出|保存|文件|路径|path|url)[：:\s]+([a-zA-Z]:[\\/][^\s"'`<>]+\.(?:png|jpe?g|gif|webp|bmp|svg|mp3|wav|ogg|flac|m4a|aac|mp4|mov|mkv|avi|webm))/gi,
-    /((?:https?:\/\/|data:(?:image|audio|video)\/)[^\s"'`<>]+\.(?:png|jpe?g|gif|webp|bmp|svg|mp3|wav|ogg|flac|m4a|aac|mp4|mov|mkv|avi|webm)?[^\s"'`<>]*)/gi,
-  ]
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      const raw = match[1]
-      const url = toMediaUrl(raw)
-      const modality = inferOutputModality(url)
-      if (url && modality !== 'file' && !result.some(item => item.url === url)) {
-        result.push({ url, modality, label: raw.split(/[\\/]/).pop() || modality })
-      }
-    }
-  }
-  return result
-}
-
-function mediaOutputs(index) {
-  const parsed = parsedMessages.value[index]
-  return extractMediaOutputs(parsed ? parsed.content : '')
-}
-
-function toggleReasoning(index) {
-  expandedReasonings.value[index] = !expandedReasonings.value[index]
-}
-
-watch(() => chatStore.messages, (msgs) => {
-  const parsed = {}
-  msgs.forEach((msg, i) => {
-    if (msg.role === 'assistant') parsed[i] = parseMessageContent(msg.content)
-  })
-  parsedMessages.value = parsed
-}, { deep: true, immediate: true })
-
-const { chatAttachments, onChatFileSelect: onFileSelect, onPaste, uploadChatFiles, removeChatAttachment: removeAttachment, detachAttachments } = useChatUpload()
-
-async function toggleRecording() {
-  if (!recordingSupported.value) {
-    toast('当前环境不支持浏览器录音', 'warning')
-    return
-  }
-  if (isRecording.value && mediaRecorder) {
-    mediaRecorder.stop()
-    return
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    recordingChunks = []
-    mediaRecorder = new MediaRecorder(stream)
-    mediaRecorder.ondataavailable = event => {
-      if (event.data?.size) recordingChunks.push(event.data)
-    }
-    mediaRecorder.onstop = async () => {
-      isRecording.value = false
-      stream.getTracks().forEach(track => track.stop())
-      const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || 'audio/webm' })
-      const file = new File([blob], `voice_${Date.now()}.webm`, { type: blob.type })
-      await uploadChatFiles([file])
-      mediaRecorder = null
-      recordingChunks = []
-    }
-    mediaRecorder.start()
-    isRecording.value = true
-  } catch (err) {
-    isRecording.value = false
-    toast(`无法开始录音: ${err.message}`, 'error')
-  }
-}
-
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesArea.value) messagesArea.value.scrollTop = messagesArea.value.scrollHeight
-  })
-}
-
+function scrollToBottom() { nextTick(() => { if (messagesArea.value) messagesArea.value.scrollTop = messagesArea.value.scrollHeight }) }
 watch(() => chatStore.messages.length, scrollToBottom)
 watch(() => chatStore.isReceiving, scrollToBottom)
 
+const isRecording = ref(false)
+const inputPlaceholder = computed(() => {
+  if (isRecording.value) return '正在录音...'
+  return '输入消息，Enter 发送，Shift+Enter 换行'
+})
+
 function handleSend() {
   if (!canSend.value) return
-  if ((runtimeStore.life.needs?.fatigue || 0) > 85) {
-    toast('疲劳较高，正在强撑执行', 'warning')
-  }
-  chatStore.sendMessage(engineModel.value, chatAttachments)
-  detachAttachments()
-  setTimeout(() => runtimeStore.refreshLife(), 500)
+  chatStore.sendMessage(engineModel.value)
   scrollToBottom()
 }
+function onKeydown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }
 
-function formatToolResult(result) {
-  const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-  return text.length > 700 ? `${text.slice(0, 700)}...` : text
-}
-
-function onKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    handleSend()
+// 语音输入
+async function toggleVoice() {
+  if (isRecording.value) {
+    isRecording.value = false
+    // TODO: 停止录音并发送音频
+    toast('语音功能开发中', 'info')
+  } else {
+    isRecording.value = true
+    // TODO: 开始录音
+    toast('语音功能开发中', 'info')
   }
 }
 
-async function copyMsg(content) {
+// 图片上传
+async function onImageSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const formData = new FormData()
+  formData.append('file', file)
   try {
-    await navigator.clipboard.writeText(content)
-    toast(`${t('copy')} ✓`, 'success')
+    const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+    if (resp.ok) {
+      const data = await resp.json()
+      chatStore.chatInput += `[图片: ${data.filename}] `
+      toast('图片已上传', 'success')
+    } else {
+      toast('图片上传失败', 'error')
+    }
   } catch {
-    toast('复制失败', 'error')
+    toast('图片上传失败', 'error')
+  }
+  e.target.value = ''
+}
+
+// 视频上传
+async function onVideoSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+    if (resp.ok) {
+      const data = await resp.json()
+      chatStore.chatInput += `[视频: ${data.filename}] `
+      toast('视频已上传', 'success')
+    } else {
+      toast('视频上传失败', 'error')
+    }
+  } catch {
+    toast('视频上传失败', 'error')
+  }
+  e.target.value = ''
+}
+
+// 文件上传
+async function onFileSelect(e) {
+  const files = e.target.files
+  if (!files.length) return
+  for (const file of files) {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+      if (resp.ok) {
+        const data = await resp.json()
+        chatStore.chatInput += `[文件: ${data.filename}] `
+      }
+    } catch {}
+  }
+  toast(`已上传 ${files.length} 个文件`, 'success')
+  e.target.value = ''
+}
+
+// 拍照/录像
+async function toggleCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    // TODO: 实现拍照/录像逻辑
+    toast('摄像头功能开发中', 'info')
+    stream.getTracks().forEach(t => t.stop())
+  } catch {
+    toast('无法访问摄像头', 'error')
   }
 }
 
-onMounted(() => {
-  runtimeStore.refreshLife()
-  scrollToBottom()
-})
+async function copyMsg(content) { try { await navigator.clipboard.writeText(content); toast('已复制', 'success') } catch { toast('复制失败', 'error') } }
 
-onUnmounted(() => {
-  if (mediaRecorder && isRecording.value) mediaRecorder.stop()
-})
+onMounted(scrollToBottom)
 </script>
 
 <style scoped>
-.chat-workbench {
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  color: var(--text);
-}
+.chat-workbench { height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); }
 
+/* 顶栏 */
 .chat-topbar {
-  min-height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 14px 22px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-  flex-shrink: 0;
+  min-height: 52px; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 10px 24px; border-bottom: 1px solid var(--glass-border);
+  background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  flex-shrink: 0; position: relative; z-index: 5;
 }
-
-.chat-title-block {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.chat-topbar::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.2), transparent);
 }
+.chat-title-block { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.title-row { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.title-row h1 { margin: 0; font-size: 17px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text);
+.life-strip { display: flex; gap: 6px; }
+.life-chip, .metric-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
+  border-radius: var(--radius-full); font-size: 11px; color: var(--text-muted);
+  border: 1px solid var(--border); background: var(--bg-muted);
 }
+.life-chip { color: var(--primary); background: var(--primary-subtle); border-color: var(--primary-light); font-weight: 600; }
 
-.title-row h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 650;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: 0;
-}
-
-.life-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.life-chip,
-.metric-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1;
-}
-
-.life-chip {
-  color: var(--primary);
-  background: var(--primary-subtle);
-  border-color: var(--primary-light);
-  font-weight: 600;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
+.topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(72px, 1fr));
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--bg-muted);
+  display: flex; padding: 3px; border-radius: var(--radius-md); background: var(--bg-muted);
   border: 1px solid var(--border);
 }
-
-.mode-switch button,
-.icon-btn,
-.msg-action-btn,
-.send-btn,
-.stop-btn,
-.reasoning-toggle,
-.att-remove {
-  font: inherit;
-}
-
+.mode-switch button, .icon-btn, .msg-action-btn, .send-btn, .stop-btn { font: inherit; }
 .mode-switch button {
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
+  height: 30px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px;
 }
-
-.mode-switch button.active {
-  background: var(--bg-card);
-  color: var(--primary);
-  box-shadow: var(--shadow-sm);
-}
-
+.mode-switch button.active { background: var(--bg-card); color: var(--primary); box-shadow: var(--shadow-sm); }
 .icon-btn {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text-secondary);
-  background: var(--bg-card);
-  cursor: pointer;
+  width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-secondary);
+  background: var(--glass-bg); cursor: pointer; transition: var(--transition);
 }
+.icon-btn:hover { color: var(--text); background: var(--bg-hover); transform: scale(1.05); }
 
-.icon-btn:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
+/* 对话区 */
+.conversation-shell { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.messages-area { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; }
+.chat-thread { width: min(100%, 760px); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-.conversation-shell {
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.messages-area {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 28px 24px;
-}
-
-.chat-thread {
-  width: min(100%, 900px);
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
+/* 运行状态 */
 .runtime-notice {
-  display: grid;
-  grid-template-columns: 9px minmax(0, 1fr);
-  align-items: start;
-  gap: 11px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-card);
-  box-shadow: var(--shadow-sm);
+  display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px;
+  border-radius: var(--radius-lg); background: var(--glass-bg); border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: var(--shadow-sm);
 }
+.runtime-notice-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.runtime-notice.loading .runtime-notice-dot, .runtime-notice.connecting .runtime-notice-dot { background: var(--warning); }
+.runtime-notice.error .runtime-notice-dot { background: var(--danger); }
+.runtime-notice.connected .runtime-notice-dot { background: var(--success); }
+.runtime-notice strong { display: block; color: var(--text); font-size: 13px; font-weight: 650; }
+.runtime-notice p { margin: 3px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 
-.runtime-notice-dot {
-  width: 9px;
-  height: 9px;
-  margin-top: 6px;
-  border-radius: 999px;
-  background: var(--text-muted);
-}
-
-.runtime-notice.loading .runtime-notice-dot,
-.runtime-notice.connecting .runtime-notice-dot {
-  background: var(--warning);
-}
-
-.runtime-notice.error .runtime-notice-dot {
-  background: var(--danger);
-}
-
-.runtime-notice.connected .runtime-notice-dot {
-  background: var(--success);
-}
-
-.runtime-notice strong {
-  display: block;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.runtime-notice p {
-  margin: 3px 0 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.runtime-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-}
-
-.runtime-meta-row span {
-  padding: 3px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-muted);
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.runtime-can-do {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.can-do-tag {
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-/* 态极生命表达 */
-.life-expressions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 0 4px;
-}
-
-.life-expression {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  font-size: 13px;
-  animation: fadeIn 0.5s ease;
-}
-
-.life-expression.life-fatigue { border-left: 3px solid var(--info); }
-.life-expression.life-hunger { border-left: 3px solid var(--warning); }
-.life-expression.life-curiosity { border-left: 3px solid var(--success); }
-.life-expression.life-stress { border-left: 3px solid var(--danger); }
-.life-expression.life-boredom { border-left: 3px solid var(--purple); }
-
-.life-expr-emoji { font-size: 16px; }
-.life-expr-text { color: var(--text-secondary); font-style: italic; }
-
+/* 空状态 */
 .empty-state {
-  min-height: 360px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--text-muted);
-  text-align: center;
+  min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center;
+}
+.empty-glow-ring {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 80px; height: 80px; border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1));
+  border: 2px solid rgba(99,102,241,0.3); margin-bottom: 8px;
+  box-shadow: 0 0 40px rgba(99,102,241,0.2), 0 0 80px rgba(99,102,241,0.08);
+  animation: ringPulse 3s ease-in-out infinite, floatSlow 6s ease-in-out infinite;
+}
+@keyframes ringPulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(99,102,241,0.2), 0 0 80px rgba(99,102,241,0.08); }
+  50% { box-shadow: 0 0 50px rgba(99,102,241,0.3), 0 0 100px rgba(99,102,241,0.12); }
+}
+@keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.empty-brain { color: var(--primary); }
+.empty-logo { width: 48px; height: 48px; }
+.empty-title {
+  margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.12em;
+  background: linear-gradient(135deg, var(--text), var(--primary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.empty-desc { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+.empty-hints { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+.hint-card {
+  display: flex; align-items: center; gap: 7px; padding: 10px 18px; border-radius: var(--radius-lg);
+  background: var(--glass-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border); color: var(--text-secondary); font-size: 0.85rem;
+  cursor: pointer; transition: var(--transition); box-shadow: var(--shadow-sm);
+}
+.hint-card:hover {
+  color: var(--primary); border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.08);
+  box-shadow: 0 0 24px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
 }
 
-.empty-symbol {
-  width: 72px;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 18px;
-  background: var(--bg-muted);
-  color: var(--primary);
-  border: 1px solid var(--border);
-}
-
-.empty-state h2 {
-  margin: 10px 0 0;
-  color: var(--text);
-  font-size: 22px;
-}
-
-.empty-state p {
-  margin: 0;
-}
-
-.message-row {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.message-row.user {
-  grid-template-columns: minmax(0, 1fr) 34px;
-}
-
-.message-row.user .message-avatar {
-  grid-column: 2;
-}
-
-.message-row.user .message-main {
-  grid-column: 1;
-  grid-row: 1;
-  align-items: flex-end;
-}
-
+/* 消息 */
+.message-row { display: flex; gap: 12px; align-items: flex-start; }
+.message-row.user { flex-direction: row-reverse; }
+.message-row.user .message-main { align-items: flex-end; }
 .message-avatar {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 11px;
-  background: var(--bg-muted);
-  color: var(--primary);
-  border: 1px solid var(--border);
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md); flex-shrink: 0; margin-top: 2px;
 }
+.message-row.assistant .message-avatar { background: var(--primary-subtle); color: var(--primary); border: 1px solid var(--primary-light); }
+.message-row.user .message-avatar { background: var(--primary-gradient); color: white; border: 1px solid transparent; }
 
-.message-row.user .message-avatar {
-  color: #fff;
-  border-color: transparent;
-  background: var(--primary-gradient);
-}
-
-.message-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.message-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.mode-label {
-  color: var(--text-muted);
-}
+.message-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.message-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.message-row.user .message-meta { flex-direction: row-reverse; }
+.mode-label { font-weight: 400; color: var(--text-muted); font-size: 11px; }
 
 .bubble {
-  max-width: min(100%, 780px);
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  line-height: 1.72;
+  max-width: min(100%, 720px); padding: 14px 16px; border-radius: var(--radius-lg);
+  background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border); box-shadow: var(--shadow-sm); line-height: 1.7;
 }
+.message-row.user .bubble { color: white; background: var(--primary-gradient); border-color: transparent; }
+.message-row.assistant .bubble { border-left: 3px solid var(--primary); }
+.text-content { white-space: pre-wrap; word-break: break-word; }
 
-.message-row.user .bubble {
-  color: #fff;
-  background: var(--primary-gradient);
-  border-color: transparent;
-}
-
-.message-row.assistant .bubble {
-  border-left: 3px solid var(--primary);
-}
-
-.text-content {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.message-media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.message-media-card {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-muted);
-}
-
-.message-media-card img,
-.message-media-card video {
-  display: block;
-  width: 100%;
-  max-height: 240px;
-  object-fit: contain;
-  background: #000;
-}
-
-.message-media-card audio {
-  width: 100%;
-  min-width: 160px;
-  display: block;
-}
-
-.message-row.user .message-media-card {
-  border-color: rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.12);
-}
-
-.reasoning-block {
-  margin-bottom: 12px;
-}
-
-.reasoning-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-secondary);
-  background: var(--bg-muted);
-  cursor: pointer;
-}
-
-.reasoning-content {
-  margin-top: 8px;
-  padding: 12px;
-  border-radius: 8px;
-  border-left: 3px solid var(--border);
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.tool-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.tool-card {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-muted);
-}
-
-.tool-card.running {
-  border-color: var(--warning);
-}
-
-.tool-card.done {
-  border-color: var(--success);
-}
-
-.tool-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tool-name {
-  font-family: Consolas, 'Courier New', monospace;
-  font-weight: 650;
-}
-
-.tool-status {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.tool-status.running {
-  color: var(--warning);
-}
-
-.tool-status.done {
-  color: var(--success);
-}
-
-.tool-trace {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.trace-step {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-
-.trace-step.muted {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.trace-label {
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font-size: 11px;
-  border: 1px solid var(--border);
-}
-
-.trace-step code,
-.trace-step pre {
-  display: block;
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 180px;
-  overflow: auto;
-}
-
-.msg-actions {
-  display: flex;
-  gap: 6px;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-
-.message-main:hover .msg-actions {
-  opacity: 1;
-}
-
+.msg-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; margin-top: 4px; }
+.message-row.user .msg-actions { justify-content: flex-end; }
+.message-main:hover .msg-actions { opacity: 1; }
 .msg-action-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-muted);
-  background: var(--bg-card);
-  cursor: pointer;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-muted);
+  background: var(--glass-bg); cursor: pointer; transition: var(--transition);
 }
+.msg-action-btn:hover { color: var(--primary); background: var(--primary-subtle); }
 
-.msg-action-btn:hover {
-  color: var(--primary);
-  background: var(--primary-subtle);
-}
+/* 思考动画 */
+.thinking-row .bubble { width: fit-content; }
+.breathing { animation: breathe 2s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { box-shadow: 0 0 0 rgba(99,102,241,0); } 50% { box-shadow: 0 0 12px rgba(99,102,241,0.2); } }
+.thinking-animation { display: flex; gap: 5px; align-items: center; padding: 4px 0; }
+.think-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: dotBounce 1.2s ease-in-out infinite; }
+.think-dot:nth-child(2) { animation-delay: 0.15s; }
+.think-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dotBounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.3; } 40% { transform: translateY(-5px); opacity: 1; } }
 
-.thinking-row .bubble {
-  width: fit-content;
-}
-
-.breathing {
-  animation: breathe 2s ease-in-out infinite;
-}
-
-@keyframes breathe {
-  0%, 100% { box-shadow: 0 0 0 rgba(99,102,241,0); transform: scale(1); }
-  50% { box-shadow: 0 0 16px rgba(99,102,241,0.28); transform: scale(1.04); }
-}
-
-.thinking-animation {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 4px 2px;
-}
-
-.think-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--primary);
-  animation: think-bounce 1.25s ease-in-out infinite;
-}
-
-.think-dot:nth-child(2) { animation-delay: 0.18s; }
-.think-dot:nth-child(3) { animation-delay: 0.36s; }
-
-@keyframes think-bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.38; }
-  40% { transform: translateY(-6px); opacity: 1; }
-}
-
-.life-needs-indicator {
-  align-self: center;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
+/* 输入区 */
 .composer-area {
-  flex-shrink: 0;
-  padding: 14px 24px 18px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-card);
+  flex-shrink: 0; padding: 12px 20px 16px; border-top: 1px solid var(--glass-border);
+  background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  position: relative; z-index: 5;
 }
-
-.composer-area > * {
-  width: min(100%, 900px);
-  margin-left: auto;
-  margin-right: auto;
+.composer-area::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.2), transparent);
 }
+.composer-area > * { width: min(100%, 760px); margin-left: auto; margin-right: auto; }
 
-.stop-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 10px;
+.composer-hint { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+/* 多模态工具栏 */
+.multimodal-toolbar {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-bottom: 8px; padding: 6px 0;
 }
+.mm-btn {
+  display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-full);
+  background: var(--bg-elevated); color: var(--text-secondary);
+  cursor: pointer; font-size: 12px; transition: var(--transition);
+}
+.mm-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-subtle); }
+.mm-btn.active { color: var(--danger); border-color: var(--danger); background: rgba(239,68,68,0.08); }
+.mm-label { font-size: 11px; }
 
+.stop-container { display: flex; justify-content: center; margin-bottom: 8px; }
 .stop-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--danger);
-  border-radius: 999px;
-  color: var(--danger);
-  background: var(--danger-light);
-  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 16px;
+  border: 1px solid var(--danger); border-radius: var(--radius-full); color: var(--danger);
+  background: rgba(239,68,68,0.08); cursor: pointer; font-size: 12px; transition: var(--transition);
 }
-
-.chat-attachments-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.media-rail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.media-entry {
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.media-entry:hover {
-  color: var(--primary);
-  background: var(--primary-subtle);
-  border-color: var(--primary-light);
-}
-
-.media-entry.recording {
-  color: var(--danger);
-  background: var(--danger-light);
-  border-color: var(--danger);
-}
-
-.media-entry:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-
-.chat-attachment-card {
-  position: relative;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 22px;
-  gap: 9px;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.chat-attachment-card.audio {
-  grid-template-columns: minmax(0, 1fr) 22px;
-}
-
-.attachment-preview {
-  width: 72px;
-  height: 54px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.attachment-preview img,
-.attachment-preview video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.audio-preview {
-  width: 100%;
-  grid-column: 1;
-}
-
-.audio-preview audio {
-  width: 100%;
-}
-
-.chat-attachment-meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.chat-attachment-meta small,
-.att-state {
-  color: var(--text-muted);
-}
-
-.att-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.att-remove {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.att-remove:hover {
-  color: var(--danger);
-  background: var(--danger-light);
-}
+.stop-btn:hover { background: rgba(239,68,68,0.15); transform: scale(1.02); }
 
 .input-container {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 38px;
-  align-items: end;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg);
+  display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--bg-input); transition: var(--transition);
+}
+.input-container:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-subtle), 0 0 24px rgba(99,102,241,0.12); }
+
+textarea {
+  flex: 1; border: 0; outline: none; background: transparent; color: var(--text);
+  font-family: var(--font); font-size: 14.5px; line-height: 1.7; resize: none;
+  padding: 4px 0; min-height: 24px; max-height: 150px;
+}
+textarea::placeholder { color: var(--text-muted); }
+
+.send-btn {
+  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-md); background: var(--primary-gradient); color: white;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.35); cursor: pointer; transition: var(--transition);
+}
+.send-btn:hover:not(:disabled) { box-shadow: 0 4px 20px rgba(99,102,241,0.5); transform: translateY(-1px) scale(1.05); }
+.send-btn.unavailable { opacity: 0.4; }
+
+/* Markdown */
+.markdown-body { color: inherit; }
+.markdown-body :deep(pre) {
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.5;
+}
+.markdown-body :deep(code) { font-family: var(--font-mono); font-size: 13.5px; background: var(--bg-elevated); padding: 2px 6px; border-radius: 6px; }
+.markdown-body :deep(pre code) { background: transparent; padding: 0; }
+.markdown-body :deep(p) { margin: 0 0 8px; }
+.markdown-body :deep(p:last-child) { margin-bottom: 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 20px; }
+.markdown-body :deep(blockquote) { border-left: 3px solid var(--primary-light); padding-left: 12px; color: var(--text-secondary); }
+.markdown-body :deep(img) {
+  max-width: 100%; height: auto; border-radius: var(--radius-sm);
+  margin: 8px 0; display: block; border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
-
-.input-container:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-subtle);
-}
-
-.attach-btn,
-.send-btn {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.attach-btn {
-  color: var(--text-muted);
-}
-
-.attach-btn:hover {
-  color: var(--primary);
-  background: var(--primary-subtle);
-}
-
-.send-btn {
-  border: 0;
-  color: #fff;
-  background: var(--primary);
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-
-.send-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.markdown-body {
-  color: inherit;
-}
+.markdown-body :deep(a) { color: var(--primary); text-decoration: none; }
+.markdown-body :deep(a:hover) { text-decoration: underline; }
+.markdown-body :deep(table) { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
+.markdown-body :deep(th) { background: var(--bg-muted); font-weight: 600; }
+.markdown-body :deep(hr) { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 
 @media (max-width: 760px) {
-  .chat-topbar {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 12px 14px;
-  }
-
-  .topbar-actions {
-    justify-content: space-between;
-  }
-
-  .messages-area {
-    padding: 18px 12px;
-  }
-
-  .composer-area {
-    padding: 12px;
-  }
-
-  .message-row,
-  .message-row.user {
-    grid-template-columns: 30px minmax(0, 1fr);
-  }
-
-  .message-row.user .message-avatar {
-    grid-column: 1;
-  }
-
-  .message-row.user .message-main {
-    grid-column: 2;
-    align-items: flex-start;
-  }
-
-  .bubble {
-    max-width: 100%;
-  }
+  .chat-topbar { padding: 10px 14px; flex-direction: column; align-items: stretch; }
+  .messages-area { padding: 14px 10px; }
+  .composer-area { padding: 10px 12px 14px; }
 }
 </style>

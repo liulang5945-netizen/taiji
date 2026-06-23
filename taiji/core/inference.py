@@ -24,7 +24,7 @@ from typing import Optional, Generator, Dict, Any
 import torch
 import torch.nn.functional as F
 
-from taiji.config import SPECIAL_TOKENS
+from taiji.config import SPECIAL_TOKENS, SpecialTokenResolver
 from taiji.architecture import ModelSelf
 from taiji.tokenizer import ModelSelfTokenizer
 
@@ -42,13 +42,17 @@ class NativeInferenceEngine:
     def __init__(
         self,
         model: ModelSelf,
-        tokenizer: ModelSelfTokenizer,
+        tokenizer,
         device: str = "cpu",
     ):
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
         self._compiled = False
+
+        # 动态解析特殊 token ID（兼容任何词表大小）
+        self._tokens = SpecialTokenResolver(tokenizer)
+        logger.info(f"特殊 token 解析完成: tool_call={self._tokens['tool_call']}, answer={self._tokens['answer']}")
 
         # FP16 推理（GPU 上 2x 吞吐量，50% 内存减少）
         if device.startswith("cuda") and torch.cuda.is_available():
@@ -260,7 +264,7 @@ class NativeInferenceEngine:
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
                 top_p=0.9,
-                stop_on=[SPECIAL_TOKENS["tool_call"], SPECIAL_TOKENS["answer"]],
+                stop_on=[self._tokens["tool_call"], self._tokens["answer"]],
             )
 
         # 解析输出
@@ -411,19 +415,19 @@ class NativeInferenceEngine:
             tid = ids[i]
 
             # 工具调用
-            if tid == SPECIAL_TOKENS["tool_call"]:
+            if tid == self._tokens["tool_call"]:
                 # 下一个 token 应该是工具名
                 if i + 1 < len(ids):
                     tool_id = ids[i + 1]
-                    tool_name = self.tokenizer.get_tool_name(tool_id)
+                    tool_name = self.tokenizer.get_tool_name(tool_id) if hasattr(self.tokenizer, 'get_tool_name') else None
                     if tool_name:
                         # 收集参数直到遇到 tool_result / answer / 另一个 tool_call / 序列结束
                         arg_parts = []
                         i += 2
                         while i < len(ids) and ids[i] not in (
-                            SPECIAL_TOKENS["tool_result"],
-                            SPECIAL_TOKENS["answer"],
-                            SPECIAL_TOKENS["tool_call"],
+                            self._tokens["tool_result"],
+                            self._tokens["answer"],
+                            self._tokens["tool_call"],
                         ):
                             arg_parts.append(self.tokenizer.decode([ids[i]], skip_special_tokens=True))
                             i += 1
@@ -444,12 +448,12 @@ class NativeInferenceEngine:
                 continue
 
             # 跳过 tool_result 标记（由外部注入）
-            if tid == SPECIAL_TOKENS["tool_result"]:
+            if tid == self._tokens["tool_result"]:
                 i += 1
                 continue
 
             # 最终回答
-            if tid == SPECIAL_TOKENS["answer"]:
+            if tid == self._tokens["answer"]:
                 answer_parts = []
                 i += 1
                 while i < len(ids):

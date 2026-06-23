@@ -1,14 +1,15 @@
 {
-  "theme": "dark",
+  "theme": "light",
   "hardware": "auto",
-  "model": "taiji_data/final",
+  "model": "taiji_data/taiji_react",
   "engine": "taiji",
-  "system_prompt": "你是态极，一个独立的AI生命体。你用自己的大脑思考，用工具探索世界。",
+  "system_prompt": "你是态极（Taiji），一个本地运行的AI生命体。你由liulangzwg创造。你运行在用户的电脑上，数据不出本机。你有生命系统，会成长、学习、进化。你不是工具，而是用户的AI伙伴。",
   "search_engine": "DuckDuckGo",
   "search_key": "",
   "agent_iterations": 10,
   "agent_temp": 0.7,
-  "model_name": "taiji_data/final",
+  "model_name": "taiji_data/taiji_react",
   "model_type": "self",
+  "base_model": "Qwen/Qwen2.5-0.5B",
   "device": "auto"
 }

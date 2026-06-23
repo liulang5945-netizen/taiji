@@ -21,6 +21,8 @@ import base64
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 
+from taiji.services.settings_service import load_settings, update_settings
+
 logger = logging.getLogger("Security")
 
 # ======================== 路径工具 ========================
@@ -327,41 +329,27 @@ class AuthManager:
             cls._instance._load_settings()
         return cls._instance
 
-    def _settings_path(self) -> str:
-        return os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "app_settings.json"
-        )
-
     def _load_settings(self):
         """从 app_settings.json 加载认证配置"""
-        path = self._settings_path()
         self.enabled = False
         self.username = "admin"
         self.password_hash = ""
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.enabled = data.get("auth_enabled", False)
-                self.username = data.get("auth_username", "admin")
-                self.password_hash = data.get("auth_password_hash", "")
-            except Exception:
-                pass
+        try:
+            data = load_settings()
+            self.enabled = data.get("auth_enabled", False)
+            self.username = data.get("auth_username", "admin")
+            self.password_hash = data.get("auth_password_hash", "")
+        except Exception:
+            pass
 
     def _save_settings(self):
         """保存认证配置"""
-        path = self._settings_path()
         try:
-            data = {}
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            data["auth_enabled"] = self.enabled
-            data["auth_username"] = self.username
-            data["auth_password_hash"] = self.password_hash
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            update_settings({
+                "auth_enabled": self.enabled,
+                "auth_username": self.username,
+                "auth_password_hash": self.password_hash,
+            })
         except Exception as e:
             logger.warning(f"保存认证配置失败: {e}")
 

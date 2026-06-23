@@ -1,129 +1,65 @@
 /**
- * Shell 布局 — 应用骨架
- * ======================
- * 只放最外层布局：app-wrapper、sidebar、main-content、router-wrapper。
- * 侧边栏内部样式（session-list、settings-btn 等）暂留在 app.css，后续逐步迁移。
+ * Shell 布局 — 全面圆润
  */
 
+/* 让页面背景与应用同色，圆角直接贴边 */
+html, body {
+  margin: 0; padding: 0;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
 
-/* ===== 应用容器 ===== */
 .app-wrapper {
   display: flex;
-  height: 100dvh;
+  height: 100vh;
   width: 100vw;
   overflow: hidden;
   position: relative;
-  background: linear-gradient(135deg, #0a0e1a 0%, #0d1117 40%, #111827 100%);
+  background: var(--bg);
+  border-radius: 0;
 }
 
-/* 动态粒子背景层 */
+/* 动态光晕背景 */
 .app-wrapper::before {
   content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  position: absolute;
+  inset: 0;
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 30%, rgba(245,158,11,0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(99,102,241,0.04) 0%, transparent 50%);
+    radial-gradient(ellipse at 10% 20%, rgba(99,102,241,0.07) 0%, transparent 45%),
+    radial-gradient(ellipse at 90% 80%, rgba(139,92,246,0.05) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 50%, rgba(99,102,241,0.02) 0%, transparent 55%);
   pointer-events: none;
   z-index: 0;
-  animation: taijiBreathe 8s ease-in-out infinite;
+  animation: ambientShift 8s ease-in-out infinite;
 }
 
-@keyframes taijiBreathe {
-  0%, 100% { opacity: 0.8; }
+@keyframes ambientShift {
+  0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
 
-
-/* ===== 侧边栏骨架 ===== */
 .sidebar {
-  width: clamp(220px, 18vw, 260px);
-  min-width: 200px;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-min-width);
+  background: var(--glass-bg-thick);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   color: var(--text);
   border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
-  transition: var(--transition);
   flex-shrink: 0;
   position: relative;
   z-index: 10;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.3);
 }
 
-.sidebar::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(180deg,
-    rgba(99,102,241,0.03) 0%,
-    transparent 30%,
-    transparent 70%,
-    rgba(99,102,241,0.02) 100%
-  );
-  pointer-events: none;
-  z-index: -1;
-}
-
-
-/* ===== 主内容区 ===== */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  min-width: 0;
-  overflow: hidden;
-  border-left: 1px solid var(--glass-border);
-}
-
-
-/* ===== 路由器包装 ===== */
 .router-wrapper {
   flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
-  z-index: 1;
-}
-
-
-/* ===== 亮色主题覆盖 ===== */
-:global(.theme-light) .sidebar {
-  box-shadow: 1px 0 8px rgba(15,23,42,0.08);
-  border-right-color: rgba(15,23,42,0.12);
-}
-
-:global(.theme-light) .sidebar::before {
-  display: none;
-}
-
-:global(.theme-light) .main-content {
-  border-left-color: rgba(15,23,42,0.08);
-}
-
-
-/* ===== 响应式 ===== */
-@media (max-width: 768px) {
-  .sidebar {
-    width: 64px !important;
-    min-width: 64px !important;
-  }
-  .sidebar-logo h2, .new-chat-btn span, .settings-btn span, .session-name { display: none; }
-  .sidebar-memory-ring { margin-left: 0; margin-top: 4px; }
-  .new-chat-btn { padding: 10px; justify-content: center; margin: 10px 8px 14px; }
-  .settings-btn { justify-content: center; padding: 10px 6px; border-left: none; }
-  .settings-btn.active { border-left: none; border-bottom: 2px solid var(--taiji-light); }
-  .session-item { justify-content: center; padding: 10px 6px; border-left: none; }
-  .session-item.active { border-left: none; border-bottom: 2px solid var(--taiji-light); }
-  .dedicated-view { padding: 14px 10px; }
-  .view-header { flex-direction: column; align-items: flex-start; }
-  .quick-actions { grid-template-columns: 1fr; }
 }

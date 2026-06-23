@@ -188,6 +188,99 @@ class TaijiVisionEncoder:
         except Exception as e:
             return f"图像: {os.path.basename(image_path)} (无法读取: {e})"
 
+    def describe_image_rich(self, image_path: str, taiji_model=None) -> str:
+        """
+        丰富图像描述 — 使用 CLIP 特征 + 态极模型生成描述。
+
+        优先使用 CLIP 编码 + 投影层生成特征描述，
+        回退到文件元数据描述。
+
+        Args:
+            image_path: 图像文件路径
+            taiji_model: 态极 ModelSelf 模型（可选，用于生成描述）
+
+        Returns:
+            图像的丰富描述文本
+        """
+        try:
+            from PIL import Image
+            img = Image.open(image_path).convert("RGB")
+            w, h = img.size
+            fmt = img.format or "unknown"
+            size_kb = os.path.getsize(image_path) / 1024
+
+            # 基础信息
+            base_info = f"图像 {os.path.basename(image_path)}: {w}x{h}, {fmt}, {size_kb:.0f}KB"
+
+            # 尝试使用 CLIP 获取图像-文本相似度
+            similarity_hints = []
+            try:
+                self._ensure_loaded()
+                if self._model is not None:
+                    # 测试与常见描述的相似度
+                    test_texts = [
+                        "a photo of a person", "a photo of an animal",
+                        "a screenshot of code", "a diagram or chart",
+                        "a landscape or scenery", "text or document",
+                        "a product or object", "a food or meal",
+                    ]
+                    for text in test_texts:
+                        score = self.encode_image_text_similarity(image_path, text)
+                        if score > 0.25:
+                            similarity_hints.append((text, score))
+                    similarity_hints.sort(key=lambda x: x[1], reverse=True)
+            except Exception:
+                pass
+
+            # 组装描述
+            parts = [base_info]
+
+            if similarity_hints:
+                top_hint = similarity_hints[0][0]
+                parts.append(f"内容类型: {top_hint}")
+                if len(similarity_hints) > 1:
+                    second = similarity_hints[1][0]
+                    parts.append(f"也可能包含: {second}")
+
+            # 图像颜色分析（轻量级）
+            try:
+                import numpy as np
+                img_small = img.resize((50, 50))
+                pixels = np.array(img_small)
+                avg_color = pixels.mean(axis=(0, 1))
+                brightness = avg_color.mean()
+                if brightness > 200:
+                    parts.append("整体明亮")
+                elif brightness < 50:
+                    parts.append("整体暗淡")
+                else:
+                    parts.append("中等亮度")
+            except Exception:
+                pass
+
+            return " | ".join(parts)
+
+        except Exception as e:
+            return self.describe_image_simple(image_path)
+
+    def get_image_features(self, image_path: str):
+        """
+        获取图像的 CLIP 特征向量（已投影到态极隐藏空间）。
+
+        Args:
+            image_path: 图像文件路径
+
+        Returns:
+            torch.Tensor [hidden_size] 或 None
+        """
+        try:
+            self._ensure_loaded()
+            if self._model is None:
+                return None
+            return self.encode_image(image_path)
+        except Exception:
+            return None
+
     def get_supported_formats(self) -> List[str]:
         """返回支持的图像格式"""
         return [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".gif"]

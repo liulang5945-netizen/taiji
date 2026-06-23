@@ -82,7 +82,7 @@
       <n-card size="small" :bordered="false" style="margin-bottom:16px;">
         <template #header><div style="display:flex;align-items:center;gap:8px;"><Gamepad2 :size="18" /> 控制</div></template>
         <n-space>
-          <n-button v-if="trainState === 'idle' || trainState === 'completed'" type="primary" @click="startTaijiTraining(toast)"><template #icon><Brain :size="14" /></template>🧬 开始态极微调</n-button>
+          <n-button v-if="trainState === 'idle' || trainState === 'completed'" type="primary" @click="startTaijiTraining(toast)"><template #icon><Zap :size="14" /></template>开始态极微调</n-button>
           <n-button v-if="trainState === 'idle' && pendingCheckpoints.length > 0" type="info" @click="resumeFromCheckpoint(toast, $confirm)"><template #icon><RefreshCw :size="14" /></template>恢复训练 ({{ pendingCheckpoints.length }})</n-button>
           <n-button v-if="trainState === 'running'" type="warning" @click="pauseTraining(toast)"><template #icon><Pause :size="14" /></template>{{ t('pause_training') }}</n-button>
           <n-button v-if="trainState === 'paused'" type="primary" @click="resumeTraining(toast)"><template #icon><Play :size="14" /></template>{{ t('resume_training') }}</n-button>

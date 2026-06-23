@@ -3,7 +3,7 @@
  * 从 ChatView.vue 中提取的文件上传/粘贴/附件管理逻辑
  */
 import { ref, reactive } from 'vue'
-import { API_BASE, authFetch } from './useApi.js'
+import { API_BASE, authFetch } from './apiClient.js'
 
 const IMAGE_EXTS = ['png','jpg','jpeg','bmp','gif','webp','tiff','tif','svg']
 const AUDIO_EXTS = ['wav','mp3','ogg','flac','m4a','aac','webm']
@@ -82,7 +82,7 @@ export function useChatUpload() {
               att.publicUrl = mediaData.public_url || ''
               att.modality = mediaData.modality || modality
             }
-          } catch (_) {}
+          } catch (e) { console.warn('[Upload] 媒体上传失败:', e.message) }
         }
         att.uploading = false
       } catch (err) {
@@ -106,6 +106,9 @@ export function useChatUpload() {
   }
 
   const detachAttachments = () => {
+    chatAttachments.forEach(att => {
+      if (att.previewUrl) URL.revokeObjectURL(att.previewUrl)
+    })
     chatAttachments.splice(0, chatAttachments.length)
   }
 

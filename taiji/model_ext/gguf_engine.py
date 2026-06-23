@@ -342,15 +342,14 @@ def download_gguf_model(
     if model_key not in GGUF_MODEL_REGISTRY:
         raise ValueError(f"未知的模型: {model_key}，可选: {list(GGUF_MODEL_REGISTRY.keys())}")
 
-    import requests
-    from tqdm import tqdm
+    import urllib.request
+    import urllib.error
 
     info = GGUF_MODEL_REGISTRY[model_key]
     repo = info["repo"]
     filename = info["filename"]
 
     # 构建 HuggingFace 下载 URL
-    # 使用 HuggingFace Hub API 获取下载链接
     hf_url = f"https://huggingface.co/{repo}/resolve/main/{filename}"
 
     os.makedirs(download_dir, exist_ok=True)
@@ -367,31 +366,31 @@ def download_gguf_model(
     logger.info(f"保存到: {local_path}")
 
     try:
-        # 流式下载
-        response = requests.get(hf_url, stream=True, timeout=30)
-        response.raise_for_status()
+        # 流式下载（纯 stdlib）
+        req = urllib.request.Request(hf_url, headers={"User-Agent": "Taiji/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            total_size = int(resp.headers.get("Content-Length", 0))
+            block_size = 8 * 1024 * 1024  # 8MB 块
+            downloaded = 0
 
-        total_size = int(response.headers.get("content-length", 0))
-        block_size = 8 * 1024 * 1024  # 8MB 块
-
-        with open(local_path, "wb") as f:
-            with tqdm(
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                desc=f"下载 {filename}",
-            ) as pbar:
-                for chunk in response.iter_content(chunk_size=block_size):
-                    if chunk:
-                        f.write(chunk)
-                        pbar.update(len(chunk))
-                        if progress_callback:
-                            progress_callback(pbar.n, total_size)
+            with open(local_path, "wb") as f:
+                while True:
+                    chunk = resp.read(block_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and total_size > 0:
+                        progress_callback(downloaded, total_size)
+                    if total_size > 0:
+                        pct = downloaded * 100 // total_size
+                        if downloaded % (block_size * 10) == 0 or downloaded == total_size:
+                            logger.info(f"下载进度: {pct}% ({downloaded / 1e6:.1f}/{total_size / 1e6:.1f} MB)")
 
         logger.info(f"模型下载完成: {local_path}")
         return local_path
 
-    except requests.RequestException as e:
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
         # 下载失败时清理未完成的文件
         if os.path.exists(local_path):
             os.remove(local_path)

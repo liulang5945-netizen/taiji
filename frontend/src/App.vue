@@ -4,7 +4,8 @@
       <n-dialog-provider>
         <n-notification-provider>
           <n-message-provider>
-            <div class="app-wrapper" @dragenter="onDragEnter" @dragleave="onDragLeave" @dragover.prevent @drop.prevent="onDrop">
+            <div class="app-wrapper" @dragenter="onDragEnter" @dragleave="onDragLeave" @dragover="onDragOver" @drop="onDrop">
+              <SplashScreen />
               <ToastManager ref="toastRef" />
               <ConfirmDialog ref="confirmRef" />
               <RuntimeExceptionCenter />
@@ -14,14 +15,23 @@
 
               <!-- === Router View === -->
               <div class="router-wrapper">
-                <router-view v-slot="{ Component, route }">
-                  <keep-alive>
+                <RouteErrorView v-if="routeError" :message="routeError" />
+                <router-view v-else v-slot="{ Component, route }">
+                  <keep-alive include="ChatView">
                     <component :is="Component" :key="route.path" />
                   </keep-alive>
                 </router-view>
               </div>
 
-              <div v-if="dragOver" class="global-drag-overlay">
+              <div
+                v-if="dragOver"
+                class="global-drag-overlay"
+                @click="clearDragState"
+                @dragenter.stop
+                @dragover.prevent
+                @dragleave="onDragLeave"
+                @drop.prevent.stop="onDrop"
+              >
                 <div style="text-align:center;color:white;">
                   <div style="font-size:3rem;margin-bottom:12px;">📥</div>
                   <p style="font-size:1.2rem;color:rgba(255,255,255,0.9);">{{ appStore.t('drop_release') }}</p>
@@ -36,19 +46,24 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onErrorCaptured, onMounted, onUnmounted, provide } from 'vue'
 import { darkTheme, lightTheme } from 'naive-ui'
 import ToastManager from './components/ToastManager.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import RuntimeExceptionCenter from './components/RuntimeExceptionCenter.vue'
 import AppSidebar from './components/AppSidebar.vue'
+import RouteErrorView from './components/RouteErrorView.vue'
+import SplashScreen from './components/SplashScreen.vue'
 import { useAppStore } from './stores/appStore.js'
 import { useChatStore } from './stores/chatStore.js'
 import { useApi } from './composables/useApi.js'
+import { API_BASE, authFetch } from './composables/apiClient.js'
 import { loadCheckpoints, trainAbortController } from './composables/useTraining.js'
+import router from './router'
 
 const appStore = useAppStore()
 const chatStore = useChatStore()
+const routeError = ref('')
 
 // Naive UI 主题
 const naiveTheme = computed(() => {
@@ -56,7 +71,7 @@ const naiveTheme = computed(() => {
 })
 
 const themeOverrides = computed(() => {
-  const accent = appStore.currentAccent || '#6366f1'
+  const accent = appStore.currentAccent || '#1d93ab'
   return {
     common: {
       primaryColor: accent,
@@ -95,19 +110,78 @@ provide('toast', toast)
 provide('$confirm', $confirm)
 
 // API connection
-const { startHealthCheck } = useApi()
+const { startHealthCheck, stopHealthCheck } = useApi()
+
+function onRouteError(error) {
+  routeError.value = error?.message || '页面加载失败'
+}
+
+router.onError((error) => {
+  onRouteError(error)
+})
+
+router.beforeEach(() => {
+  routeError.value = ''
+  clearDragState()
+})
+
+router.afterEach(() => {
+  routeError.value = ''
+})
+
+onErrorCaptured((error) => {
+  onRouteError(error)
+  return false
+})
 
 // Drag
 const dragOver = ref(false)
 let dragCounter = 0
-const onDragEnter = () => { dragCounter++; dragOver.value = true }
-const onDragLeave = () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; dragOver.value = false } }
-const onDrop = () => { dragCounter = 0; dragOver.value = false }
+let dragResetTimer = null
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files')
+}
+function clearDragState() {
+  dragCounter = 0
+  dragOver.value = false
+  if (dragResetTimer) {
+    clearTimeout(dragResetTimer)
+    dragResetTimer = null
+  }
+}
+function scheduleDragReset() {
+  if (dragResetTimer) clearTimeout(dragResetTimer)
+  dragResetTimer = setTimeout(clearDragState, 1200)
+}
+const onDragEnter = (event) => {
+  if (!isFileDrag(event)) return
+  event.preventDefault()
+  dragCounter++
+  dragOver.value = true
+  scheduleDragReset()
+}
+const onDragOver = (event) => {
+  if (!isFileDrag(event)) return
+  event.preventDefault()
+  dragOver.value = true
+  scheduleDragReset()
+}
+const onDragLeave = (event) => {
+  if (!isFileDrag(event)) return
+  dragCounter--
+  if (dragCounter <= 0) clearDragState()
+}
+const onDrop = (event) => {
+  if (isFileDrag(event)) event.preventDefault()
+  clearDragState()
+}
 
 // Lifecycle
 onMounted(async () => {
+  window.addEventListener('blur', clearDragState)
+  window.addEventListener('keyup', onGlobalKeyup)
   try {
-    const r = await fetch(`${import.meta.env.DEV ? '' : `${window.location.protocol}//${window.location.hostname}:8000`}/api/settings`);
+    const r = await authFetch(`${API_BASE}/api/settings`);
     if (r.ok) {
       const saved = await r.json();
       if (saved && typeof saved === 'object') {
@@ -132,7 +206,15 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('blur', clearDragState)
+  window.removeEventListener('keyup', onGlobalKeyup)
+  clearDragState()
+  stopHealthCheck()
   if (trainAbortController) trainAbortController.abort()
 })
+
+function onGlobalKeyup(event) {
+  if (event.key === 'Escape') clearDragState()
+}
 </script>
 <style>@import './assets/styles/index.css';</style>

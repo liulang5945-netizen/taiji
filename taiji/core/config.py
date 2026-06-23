@@ -46,6 +46,11 @@ def get_writable_base_dir() -> str:
        自动降级到 %LOCALAPPDATA%\\Taiji
     3. 如果 LocalAppData 也不可写（极罕见），回退到用户目录
     """
+    override_base = os.environ.get("TAIJI_BASE_DIR", "").strip()
+    if override_base:
+        os.makedirs(override_base, exist_ok=True)
+        return override_base
+
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
     else:

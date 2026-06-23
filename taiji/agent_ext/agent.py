@@ -58,20 +58,28 @@ def run_command(input_str: str) -> str:
 # ======================== 已存在的工具 ========================
 
 def read_webpage(url: str) -> str:
-    """通用网页正文提取"""
+    """通用网页正文提取（纯 stdlib）"""
     try:
-        import requests
-        from bs4 import BeautifulSoup
+        import urllib.request
+        import re
         if not url.startswith("http"):
             return "错误: 输入必须是包含 http 的有效网址"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        res = requests.get(url, headers=headers, timeout=10)
-        res.encoding = res.apparent_encoding
-        soup = BeautifulSoup(res.text, "html.parser")
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
-            tag.extract()
-        text = soup.get_text(separator="\n", strip=True)
-        return text[:3000] + "\n...(文章过长已截断)"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+        # 移除无用标签
+        text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<header[^>]*>.*?</header>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<(?:br|p|div|h[1-6]|li)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'<[^>]+>', '', text)
+        text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&nbsp;', ' ')
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = text.strip()
+        return text[:3000] + "\n...(文章过长已截断)" if len(text) > 3000 else text
     except Exception as e:
         return f"读取网页失败: {e}"
 
@@ -405,38 +413,44 @@ def _create_robust_search(search_engine_choice, ui_settings,
             return DuckDuckGoSearchRun().run(q)
 
         def bing(q):
-            import urllib.parse, requests
-            from bs4 import BeautifulSoup
+            import urllib.parse, urllib.request, re
             url = f"https://www.bing.com/search?q={urllib.parse.quote(q)}"
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
             try:
-                soup = BeautifulSoup(requests.get(url, headers=headers, timeout=10).text, "html.parser")
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    html = resp.read().decode('utf-8', errors='ignore')
                 results = []
-                for item in soup.select(".b_algo"):
-                    title_el = item.select_one("h2")
-                    desc_el = item.select_one(".b_caption p")
-                    title = title_el.text.strip() if title_el else ""
-                    desc = desc_el.text.strip() if desc_el else ""
+                blocks = re.findall(r'<li\s+class="b_algo">(.*?)</li>', html, re.DOTALL)
+                for block in blocks[:5]:
+                    title_m = re.search(r'<h2[^>]*>\s*<a[^>]*>(.*?)</a>', block, re.DOTALL)
+                    desc_m = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
+                    title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else ""
+                    desc = re.sub(r'<[^>]+>', '', desc_m.group(1)).strip() if desc_m else ""
                     if title or desc:
                         results.append(f"{title}: {desc}" if desc else title)
-                return "\n\n".join(results[:5]) if results else None
+                return "\n\n".join(results) if results else None
             except Exception:
                 return None
 
         def baidu(q):
-            import urllib.parse, requests
-            from bs4 import BeautifulSoup
+            import urllib.parse, urllib.request, re
             url = f"https://www.baidu.com/s?wd={urllib.parse.quote(q)}"
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
             try:
-                soup = BeautifulSoup(requests.get(url, headers=headers, timeout=10).text, "html.parser")
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    html = resp.read().decode('utf-8', errors='ignore')
                 results = []
-                for item in soup.select(".result.c-container"):
-                    title = item.select_one(".t")
-                    desc = item.select_one(".c-abstract")
+                blocks = re.findall(r'<div[^>]*class="[^"]*result[^"]*c-container[^"]*"[^>]*>(.*?)</div>\s*(?=<div[^>]*class="[^"]*result)', html, re.DOTALL)
+                for block in blocks[:5]:
+                    title_m = re.search(r'<h3[^>]*>\s*<a[^>]*>(.*?)</a>', block, re.DOTALL)
+                    desc_m = re.search(r'<div[^>]*class="[^"]*c-abstract[^"]*"[^>]*>(.*?)</div>', block, re.DOTALL)
+                    title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else ""
+                    desc = re.sub(r'<[^>]+>', '', desc_m.group(1)).strip() if desc_m else ""
                     if title and desc:
-                        results.append(title.text.strip() + ": " + desc.text.strip())
-                return "\n\n".join(results[:5]) if results else None
+                        results.append(title + ": " + desc)
+                return "\n\n".join(results) if results else None
             except Exception:
                 return None
 
@@ -471,53 +485,56 @@ def _create_robust_search(search_engine_choice, ui_settings,
     return robust_search
 
 
+def _urllib_post_json(url: str, headers: dict, payload: dict, timeout: int = 120) -> dict:
+    """用 urllib 发送 JSON POST 请求（纯 stdlib，替代 requests.post）"""
+    import urllib.request
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode('utf-8'))
+
+
 def run_api_chat(prompt: str, history: list, system_prompt: str,
                  api_base: str, api_key: str, api_model: str) -> str:
-    """云端 API 对话（非流式）"""
-    import requests
+    """云端 API 对话（非流式，纯 stdlib）"""
     from taiji.agent_ext.token_optimizer import (
         compute_dynamic_max_tokens, compress_history,
         estimate_messages_tokens, get_tracker,
     )
     if not api_key:
         return "❌ 请先填写 API Key！"
-    
-    # 动态 max_tokens: 根据问题复杂度自动调整
+
     max_tokens = compute_dynamic_max_tokens(prompt)
-    
-    # 压缩历史: 超过 3 轮时截断早期对话
     compressed_history = compress_history(history, max_rounds=3, max_chars_per_round=400)
-    
+
     messages = [{"role": "system", "content": system_prompt}]
     for user_msg, bot_msg in compressed_history:
         messages.append({"role": "user", "content": user_msg})
         messages.append({"role": "assistant", "content": bot_msg})
     messages.append({"role": "user", "content": prompt})
-    
+
     payload = {"model": api_model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.7}
     url = api_base.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    if response.status_code == 200:
-        result = response.json()
+    try:
+        result = _urllib_post_json(url, headers, payload, timeout=120)
         content = result["choices"][0]["message"]["content"]
-        # 记录 token 使用
         usage = result.get("usage", {})
         if usage:
             get_tracker().record(
                 usage.get("prompt_tokens", 0),
                 usage.get("completion_tokens", 0),
-                model=api_model,
-                endpoint="chat",
+                model=api_model, endpoint="chat",
             )
         return content
-    return f"❌ API 请求失败: HTTP {response.status_code}\n{response.text}"
+    except Exception as e:
+        return f"❌ API 请求失败: {e}"
 
 
 def run_api_chat_stream(prompt: str, history: list, system_prompt: str,
                         api_base: str, api_key: str, api_model: str):
-    """云端 API 对话（流式生成）"""
-    import requests
+    """云端 API 对话（流式生成，纯 stdlib）"""
+    import urllib.request
     from taiji.agent_ext.token_optimizer import (
         compute_dynamic_max_tokens, compress_history,
         estimate_messages_tokens, estimate_tokens, get_tracker,
@@ -525,60 +542,53 @@ def run_api_chat_stream(prompt: str, history: list, system_prompt: str,
     if not api_key:
         yield "❌ 请先填写 API Key！"
         return
-    
-    # 动态 max_tokens
+
     max_tokens = compute_dynamic_max_tokens(prompt)
-    
-    # 压缩历史
     compressed_history = compress_history(history, max_rounds=3, max_chars_per_round=400)
-    
+
     messages = [{"role": "system", "content": system_prompt}]
     for user_msg, bot_msg in compressed_history:
         messages.append({"role": "user", "content": user_msg})
         messages.append({"role": "assistant", "content": bot_msg})
     messages.append({"role": "user", "content": prompt})
-    
-    # 估算输入 token 数
-    input_tokens_est = estimate_messages_tokens(messages)
-    
+
     payload = {"model": api_model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.7, "stream": True}
     url = api_base.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
-        response = requests.post(url, headers=headers, json=payload, stream=True, timeout=(30, 300))
-        if response.status_code != 200:
-            yield f"❌ API 请求失败: HTTP {response.status_code}\n{response.text}"
-            return
-        for raw_line in response.iter_lines():
-            if not raw_line:
-                continue
-            try:
-                line = raw_line.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-            if line.startswith("data: "):
-                data = line[6:]
-                if data.strip() == "[DONE]":
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            buffer = ""
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
                     break
-                try:
-                    chunk = json.loads(data)
-                    choices = chunk.get("choices", [])
-                    if choices:
-                        content = choices[0].get("delta", {}).get("content", "")
-                        if content:
-                            yield content
-                except Exception:
-                    continue
-    except requests.exceptions.Timeout:
-        yield "\n\n❌ API 请求超时，请检查网络或更换模型。"
+                buffer += chunk.decode('utf-8', errors='ignore')
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        return
+                    try:
+                        chunk_json = json.loads(data_str)
+                        choices = chunk_json.get("choices", [])
+                        if choices:
+                            content = choices[0].get("delta", {}).get("content", "")
+                            if content:
+                                yield content
+                    except Exception:
+                        continue
     except Exception as e:
         yield f"\n\n❌ API 流式请求失败: {e}"
 
 
 def run_anthropic_chat(prompt: str, history: list, system_prompt: str,
                        api_base: str, api_key: str, api_model: str) -> str:
-    """Anthropic 兼容 API 对话（非流式）"""
-    import requests
+    """Anthropic 兼容 API 对话（非流式，纯 stdlib）"""
     from taiji.agent_ext.token_optimizer import (
         compute_dynamic_max_tokens, compress_history,
         estimate_messages_tokens, get_tracker,
@@ -596,37 +606,31 @@ def run_anthropic_chat(prompt: str, history: list, system_prompt: str,
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": api_model,
-        "max_tokens": max_tokens,
-        "temperature": 0.7,
-        "system": system_prompt,
-        "messages": messages,
+        "model": api_model, "max_tokens": max_tokens, "temperature": 0.7,
+        "system": system_prompt, "messages": messages,
     }
     url = api_base.rstrip("/") + "/messages"
     headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+        "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json",
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    if response.status_code == 200:
-        result = response.json()
+    try:
+        result = _urllib_post_json(url, headers, payload, timeout=120)
         content = result["content"][0]["text"]
         usage = result.get("usage", {})
         if usage:
             get_tracker().record(
-                usage.get("input_tokens", 0),
-                usage.get("output_tokens", 0),
+                usage.get("input_tokens", 0), usage.get("output_tokens", 0),
                 model=api_model, endpoint="chat",
             )
         return content
-    return f"❌ API 请求失败: HTTP {response.status_code}\n{response.text}"
+    except Exception as e:
+        return f"❌ API 请求失败: {e}"
 
 
 def run_anthropic_chat_stream(prompt: str, history: list, system_prompt: str,
                               api_base: str, api_key: str, api_model: str):
-    """Anthropic 兼容 API 对话（流式生成）"""
-    import requests
+    """Anthropic 兼容 API 对话（流式生成，纯 stdlib）"""
+    import urllib.request
     from taiji.agent_ext.token_optimizer import (
         compute_dynamic_max_tokens, compress_history,
         estimate_messages_tokens, get_tracker,
@@ -645,50 +649,43 @@ def run_anthropic_chat_stream(prompt: str, history: list, system_prompt: str,
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": api_model,
-        "max_tokens": max_tokens,
-        "temperature": 0.7,
-        "system": system_prompt,
-        "messages": messages,
-        "stream": True,
+        "model": api_model, "max_tokens": max_tokens, "temperature": 0.7,
+        "system": system_prompt, "messages": messages, "stream": True,
     }
     url = api_base.rstrip("/") + "/messages"
     headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+        "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json",
     }
     try:
-        response = requests.post(url, headers=headers, json=payload, stream=True, timeout=(30, 300))
-        if response.status_code != 200:
-            yield f"❌ API 请求失败: HTTP {response.status_code}\n{response.text}"
-            return
-        for raw_line in response.iter_lines():
-            if not raw_line:
-                continue
-            try:
-                line = raw_line.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
-            if not line.startswith("data: "):
-                continue
-            data = line[6:]
-            try:
-                event = json.loads(data)
-                event_type = event.get("type", "")
-                if event_type == "content_block_delta":
-                    text = event.get("delta", {}).get("text", "")
-                    if text:
-                        yield text
-                elif event_type == "message_stop":
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            buffer = ""
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
                     break
-                elif event_type == "error":
-                    error_msg = event.get("error", {}).get("message", "未知错误")
-                    yield f"\n\n❌ API 错误: {error_msg}"
-                    break
-            except Exception:
-                continue
-    except requests.exceptions.Timeout:
-        yield "\n\n❌ API 请求超时，请检查网络或更换模型。"
+                buffer += chunk.decode('utf-8', errors='ignore')
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    try:
+                        event = json.loads(data_str)
+                        event_type = event.get("type", "")
+                        if event_type == "content_block_delta":
+                            text = event.get("delta", {}).get("text", "")
+                            if text:
+                                yield text
+                        elif event_type == "message_stop":
+                            return
+                        elif event_type == "error":
+                            error_msg = event.get("error", {}).get("message", "未知错误")
+                            yield f"\n\n❌ API 错误: {error_msg}"
+                            return
+                    except Exception:
+                        continue
     except Exception as e:
         yield f"\n\n❌ API 流式请求失败: {e}"

@@ -15,8 +15,5 @@ from taiji.life.sleep_engine import *  # noqa: F401,F403
 from taiji.life.play_engine import *  # noqa: F401,F403
 from taiji.life.evolution_engine import *  # noqa: F401,F403
 
-# 向后兼容 re-export（已迁移至 taiji.body）
-from taiji.life.body import *  # noqa: F401,F403
-from taiji.life.limbs import *  # noqa: F401,F403
-from taiji.life.metabolism import *  # noqa: F401,F403
-from taiji.life.senses import *  # noqa: F401,F403
+# 身体模块（已迁移至 taiji.body，按需延迟导入）
+from taiji.body.core import BodyCore  # noqa: F401

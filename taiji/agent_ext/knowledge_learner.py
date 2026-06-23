@@ -496,16 +496,21 @@ class KnowledgeLearner:
                     return str(result)[:10000]
             except Exception:
                 pass
-        # 降级：用 requests 简单获取
+        # 降级：用 urllib + regex 简单获取（纯 stdlib）
         try:
-            import requests
-            from bs4 import BeautifulSoup
-            resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-            resp.encoding = resp.apparent_encoding
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer"]):
-                tag.decompose()
-            return soup.get_text(separator="\n", strip=True)[:10000]
+            import urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                html = resp.read().decode('utf-8', errors='ignore')
+            text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+            text = re.sub(r'<(?:br|p|div|h[1-6]|li)[^>]*/?>', '\n', text, flags=re.IGNORECASE)
+            text = re.sub(r'<[^>]+>', '', text)
+            text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&nbsp;', ' ')
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            return text.strip()[:10000]
         except Exception:
             return ""
 

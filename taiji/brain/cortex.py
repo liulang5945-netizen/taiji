@@ -170,9 +170,7 @@ class Cortex:
 
         life = self._get_life()
         if life is not None:
-            with life._lock:
-                life.needs.fatigue += amount * 0.3
-                life.needs.clamp_all()
+            life.add_fatigue(amount * 0.3)
 
     def _report_success(self, topic: str = ""):
         """

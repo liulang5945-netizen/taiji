@@ -46,6 +46,8 @@ export const useRuntimeStore = defineStore('runtime', () => {
   const toolsLoading = ref(false)
   const toolError = ref('')
   const exceptions = ref([])
+  const logs = ref([])
+  const MAX_LOGS = 200
   const agentPrefs = ref({
     maxIterations: readNumber('taiji_agent_max_iterations', 10),
     temperature: readNumber('taiji_agent_temperature', 0.7),
@@ -251,9 +253,6 @@ export const useRuntimeStore = defineStore('runtime', () => {
     if (toolError.value) {
       list.push({ level: 'warning', title: '工具状态异常', message: toolError.value })
     }
-    if (terminal.value.error) {
-      list.push({ level: 'warning', title: '终端不可用', message: terminal.value.error })
-    }
     return list
   })
 
@@ -263,6 +262,17 @@ export const useRuntimeStore = defineStore('runtime', () => {
       message,
       modelLoaded,
       checkedAt: Date.now(),
+    }
+  }
+
+  function applyBootstrap(data) {
+    if (!data) return
+    // Update auth state from bootstrap (public, no token required)
+    if (data.auth_enabled !== undefined) {
+      auth.value = {
+        ...auth.value,
+        enabled: !!data.auth_enabled,
+      }
     }
   }
 
@@ -320,6 +330,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     localStorage.removeItem('jwt_token')
     auth.value.authenticated = false
     auth.value.error = message
+    window.dispatchEvent(new CustomEvent('taiji-auth-expired', { detail: { message } }))
   }
 
   function syncTerminal(status, error = '') {
@@ -331,6 +342,22 @@ export const useRuntimeStore = defineStore('runtime', () => {
     if (/认证|JWT|token/i.test(error)) {
       reportAuthExpired(error)
     }
+  }
+
+  function addLog(source, message, level = 'info') {
+    logs.value.push({
+      source,
+      message,
+      level,
+      timestamp: Date.now(),
+    })
+    if (logs.value.length > MAX_LOGS) {
+      logs.value = logs.value.slice(-MAX_LOGS)
+    }
+  }
+
+  function clearLogs() {
+    logs.value = []
   }
 
   function addException(level, title, detail = {}, recovery = {}) {
@@ -415,6 +442,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     toolsLoading,
     toolError,
     exceptions,
+    logs,
     agentPrefs,
     runtimeSnapshot,
     connectionClass,
@@ -432,8 +460,11 @@ export const useRuntimeStore = defineStore('runtime', () => {
     syncHealth,
     syncTerminal,
     reportAuthExpired,
+    addLog,
+    clearLogs,
     addException,
     clearException,
+    applyBootstrap,
     applyRuntimeStatus,
     refreshRuntime,
     refreshMemory,

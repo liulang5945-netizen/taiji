@@ -40,52 +40,45 @@ class ToolCallParser:
 
     解析策略优先级:
     1. 原生 tool_calls（云端 API 返回）
-    2. JSON 代码块 → ```json {...} ```
-    3. JSON 行内 → {"tool": "...", "args": {...}}
-    4. <tool_call> 标签
-    5. Action 格式 → Action: tool_name(args)
-    6. 尝试修复不完整 JSON
+    2. JSON 代码块
+    3. <tool_call> 标签
+    4. JSON 行内
+    5. 函数式调用（use_tool / call_tool）
+    6. Action 格式（Action: tool_name(args)）
+    7. 思考-行动三段式（Action: tool_name / Action Input: {...}）
+    8. 尝试修复不完整 JSON
     """
 
     def parse(self, content: str, tool_calls_raw: list = None,
               available_tools: list = None) -> list:
-        """多策略解析工具调用"""
-        # 策略 1: 原生 tool_calls
         if tool_calls_raw:
             return self._parse_native_calls(tool_calls_raw)
-
         if not content:
             return []
-
-        # 策略 2: JSON 代码块
         results = self._extract_json_blocks(content)
         if results:
             return self._validate_all(results, available_tools)
-
-        # 策略 3: <tool_call> 标签
         results = self._extract_xml_tool_calls(content)
         if results:
             return self._validate_all(results, available_tools)
-
-        # 策略 4: 行内 JSON
         results = self._extract_inline_json(content)
         if results:
             return self._validate_all(results, available_tools)
-
-        # 策略 5: Action 格式
+        results = self._extract_function_calls(content)
+        if results:
+            return self._validate_all(results, available_tools)
         results = self._extract_action_format(content)
         if results:
             return self._validate_all(results, available_tools)
-
-        # 策略 6: 尝试修复不完整 JSON
+        results = self._extract_thought_action_format(content)
+        if results:
+            return self._validate_all(results, available_tools)
         results = self._try_repair_json(content)
         if results:
             return self._validate_all(results, available_tools)
-
         return []
 
     def _parse_native_calls(self, tool_calls_raw: list) -> list:
-        """解析原生 tool_calls"""
         results = []
         for tc in tool_calls_raw:
             name = tc.get("name", "")
@@ -100,10 +93,8 @@ class ToolCallParser:
         return results
 
     def _extract_json_blocks(self, text: str) -> list:
-        """从 ```json ... ``` 代码块和行内 JSON 中提取"""
         import re
         results = []
-        # 代码块
         for match in re.finditer(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL):
             try:
                 data = json.loads(match.group(1).strip())
@@ -115,7 +106,6 @@ class ToolCallParser:
                 continue
         if results:
             return results
-        # 单个 JSON 对象
         for match in re.finditer(r'\{[^{}]*"tool"\s*:\s*"([^"]+)"[^{}]*\}', text, re.DOTALL):
             try:
                 data = json.loads(match.group(0))
@@ -125,7 +115,6 @@ class ToolCallParser:
         return results
 
     def _extract_xml_tool_calls(self, text: str) -> list:
-        """从 <tool_call>...</tool_call> 标签中提取"""
         import re
         results = []
         for match in re.finditer(r'<tool_call>\s*(.*?)\s*</tool_call>', text, re.DOTALL):
@@ -137,11 +126,8 @@ class ToolCallParser:
         return results
 
     def _extract_inline_json(self, text: str) -> list:
-        """提取行内 JSON 工具调用（支持 tool/args 和 name/arguments 两种格式）"""
         import re
         results = []
-
-        # 格式 1: {"tool": "xxx", "args": {...}}
         pattern1 = r'\{[^{}]*?"tool"\s*:\s*"([^"]+)"[^{}]*?"args"\s*:\s*(\{[^}]*?\})[^{}]*?\}'
         for tool_name, args_str in re.findall(pattern1, text, re.DOTALL):
             try:
@@ -149,8 +135,6 @@ class ToolCallParser:
             except json.JSONDecodeError:
                 args = {"input": args_str}
             results.append({"name": tool_name, "arguments": args})
-
-        # 格式 2: {"name": "xxx", "arguments": {...}}
         pattern2 = r'\{[^{}]*?"name"\s*:\s*"([^"]+)"[^{}]*?"arguments"\s*:\s*(\{[^}]*?\})[^{}]*?\}'
         for tool_name, args_str in re.findall(pattern2, text, re.DOTALL):
             try:
@@ -158,8 +142,6 @@ class ToolCallParser:
             except json.JSONDecodeError:
                 args = {"input": args_str}
             results.append({"name": tool_name, "arguments": args})
-
-        # 格式 3: 整段文本就是合法 JSON
         if not results:
             try:
                 data = json.loads(text.strip())
@@ -170,17 +152,37 @@ class ToolCallParser:
                         results.append({"name": name, "arguments": args})
             except json.JSONDecodeError:
                 pass
+        return results
 
+    def _extract_function_calls(self, text: str) -> list:
+        """提取函数式调用：use_tool("name", param=value) 或 call_tool("name", {...})"""
+        import re
+        results = []
+        # 匹配 use_tool("tool_name", param=value) 或 call_tool("tool_name", {...})
+        pattern = r'(?:use_tool|call_tool)\s*\(\s*["\'](\w+)["\']\s*,\s*(\{[^}]*\}|[^)]*)\)'
+        for tool_name, args_str in re.findall(pattern, text, re.DOTALL):
+            args_str = args_str.strip()
+            if args_str.startswith('{'):
+                try:
+                    args = json.loads(args_str)
+                except json.JSONDecodeError:
+                    args = {"input": args_str}
+            else:
+                # 解析 key=value 格式
+                args = {}
+                for pair in re.findall(r'(\w+)\s*=\s*["\']([^"\']*)["\']', args_str):
+                    args[pair[0]] = pair[1]
+                if not args:
+                    args = {"input": args_str}
+            results.append({"name": tool_name, "arguments": args})
         return results
 
     def _extract_action_format(self, text: str) -> list:
-        """提取 Action: tool_name(args) 格式"""
         import re
         results = []
         for tool_name, args_str in re.findall(r'Action\s*:\s*(\w+)\(([^)]*)\)', text):
             args_str = args_str.strip().strip('"\'')
             if args_str:
-                # 尝试解析为 JSON
                 try:
                     args = json.loads(args_str)
                 except json.JSONDecodeError:
@@ -190,16 +192,41 @@ class ToolCallParser:
             results.append({"name": tool_name, "arguments": args})
         return results
 
-    def _try_repair_json(self, text: str) -> list:
-        """尝试修复不完整的 JSON"""
+    def _extract_thought_action_format(self, text: str) -> list:
+        """
+        提取思考-行动-观察三段式：
+          Thought: xxx
+          Action: tool_name
+          Action Input: {"param": "value"}
+        """
         import re
         results = []
-        # 查找类似 {"tool": "xxx", "args": { 开头但不完整的内容
+        # 匹配 Action: tool_name 后跟 Action Input: {...}
+        pattern = r'Action\s*:\s*(\w+)\s*\n\s*Action\s*Input\s*:\s*(\{[^}]*\}|[^\n]+)'
+        for tool_name, args_str in re.findall(pattern, text, re.DOTALL):
+            args_str = args_str.strip()
+            try:
+                args = json.loads(args_str)
+            except json.JSONDecodeError:
+                args = {"input": args_str} if args_str else {}
+            results.append({"name": tool_name, "arguments": args})
+
+        # 也匹配单行 Action: tool_name（无参数）
+        if not results:
+            single_pattern = r'(?<=\n)Action\s*:\s*(\w+)\s*$'
+            for match in re.finditer(single_pattern, text, re.MULTILINE):
+                tool_name = match.group(1).strip()
+                if tool_name and tool_name not in ('Input', 'Output', 'Result'):
+                    results.append({"name": tool_name, "arguments": {}})
+        return results
+
+    def _try_repair_json(self, text: str) -> list:
+        import re
+        results = []
         for match in re.finditer(r'\{\s*"tool"\s*:\s*"([^"]+)".*?"args"\s*:\s*\{([^}]*)', text, re.DOTALL):
             tool_name = match.group(1)
             args_str = match.group(2).strip()
             if args_str:
-                # 尝试给 args 加上闭合括号
                 try:
                     args = json.loads("{" + args_str + "}")
                 except json.JSONDecodeError:
@@ -210,7 +237,6 @@ class ToolCallParser:
         return results
 
     def _normalize(self, items: list) -> list:
-        """标准化各种 JSON 格式到统一格式"""
         results = []
         for item in items:
             if not isinstance(item, dict):
@@ -227,7 +253,6 @@ class ToolCallParser:
         return results
 
     def _validate_all(self, results: list, available_tools: list = None) -> list:
-        """验证工具名是否在可用列表中"""
         if not available_tools:
             return results
         valid = []
@@ -235,7 +260,6 @@ class ToolCallParser:
             if tc["name"] in available_tools:
                 valid.append(tc)
             else:
-                # 模糊匹配：忽略大小写
                 for t in available_tools:
                     if t.lower() == tc["name"].lower():
                         tc["name"] = t
@@ -248,10 +272,8 @@ class FewShotGenerator:
     """根据可用工具动态生成 few-shot 示例"""
 
     def generate(self, tool_schemas: list, max_examples: int = 3) -> str:
-        """为工具列表生成标准格式的 few-shot 示例"""
         if not tool_schemas:
             return ""
-
         examples = []
         for i, schema in enumerate(tool_schemas[:max_examples]):
             func = schema.get("function", {})
@@ -260,8 +282,6 @@ class FewShotGenerator:
             params = func.get("parameters", {}).get("properties", {})
             if not name:
                 continue
-
-            # 构造示例参数
             example_args = {}
             for pname, pinfo in list(params.items())[:2]:
                 ptype = pinfo.get("type", "string")
@@ -273,13 +293,11 @@ class FewShotGenerator:
                     example_args[pname] = True
                 elif ptype == "number":
                     example_args[pname] = 1.0
-
             examples.append(
                 f"用户: 请帮我完成某个任务\n"
                 f"助手: 我来思考一下...\n"
                 f"```json\n{json.dumps({'tool': name, 'args': example_args}, ensure_ascii=False, indent=2)}\n```"
             )
-
         return "\n\n".join(examples) if examples else ""
 
 
@@ -291,120 +309,6 @@ class ReActEngine:
         self.stream_callback = stream_callback
         self._cancelled = False
         self._tool_parser = ToolCallParser()
-
-    def _is_native_model(self) -> bool:
-        """检查当前模型是否为 ModelSelf 原生模型"""
-        from taiji.core.app_state import app_state
-        trainer = app_state.trainer
-        return trainer is not None and hasattr(trainer, 'generate_react_step')
-
-    def _run_native(self, task: str, result: AgentResult,
-                    start_time: float, registry) -> AgentResult:
-        """
-        ModelSelf 原生快速路径。
-
-        直接使用模型的 generate_react_step() 输出结构化工具调用，
-        不需要经过文本生成 + ToolCallParser 解析。
-        """
-        from taiji.core.app_state import app_state
-        from taiji.agent_ext.data_collector import get_collector
-
-        trainer = app_state.trainer
-        collector = get_collector()
-
-        # 构建 prompt
-        tool_desc = registry.get_tool_descriptions()
-        prompt = f"[系统] 你是 Taiji AI 助手。可用工具:\n{tool_desc}\n[用户] {task}\n[助手] "
-
-        for step_num in range(1, self.max_steps + 1):
-            if self._cancelled:
-                result.status = "stopped"
-                break
-
-            step = AgentStep(step_number=step_num)
-            step_start = time.time()
-
-            try:
-                self._emit("step_start", {"step": step_num})
-
-                # 原生推理: 直接输出结构化结果
-                # prompt 格式现在与训练时完全一致：
-                # [系统] 你是 Taiji AI 助手。可用工具:\n{tool_desc}\n[用户] {task}\n[助手] 
-                react_result = trainer.generate_react_step(
-                    prompt, max_new_tokens=256, temperature=0.3,
-                )
-
-                step.thought = react_result.get("thought", "")
-
-                # 最终回答
-                if "final_answer" in react_result:
-                    step.is_final = True
-                    step.observation = react_result["final_answer"]
-                    result.steps.append(step)
-                    result.final_answer = react_result["final_answer"]
-                    result.status = "completed"
-
-                    # 收集训练数据
-                    collector.collect_react_step(
-                        task=task, thought=step.thought,
-                        action=None, action_args=None,
-                        observation=None, is_final=True,
-                        final_answer=react_result["final_answer"],
-                    )
-                    self._emit("final_answer", {"answer": step.observation, "step": step_num})
-                    break
-
-                # 工具调用
-                action = react_result.get("action", "")
-                action_args = react_result.get("action_args", {})
-
-                if action:
-                    step.action = action
-                    step.action_args = action_args
-                    self._emit("tool_call", {"step": step_num, "tool": action, "args": action_args})
-
-                    observation = registry.execute(action, action_args)
-                    step.observation = observation
-
-                    # 收集训练数据
-                    collector.collect_react_step(
-                        task=task, thought=step.thought,
-                        action=action, action_args=action_args,
-                        observation=observation, is_final=False,
-                    )
-
-                    self._emit("observation", {"step": step_num, "tool": action, "result": observation[:500]})
-
-                    # 更新 prompt 加入观察结果
-                    prompt += f"<think>{step.thought}</think><tool_call>{action} {json.dumps(action_args)}\n<tool_result>{observation}</tool_result>\n"
-                else:
-                    # 没有工具调用也没有最终回答，视为最终回答
-                    step.is_final = True
-                    result.steps.append(step)
-                    result.final_answer = step.thought
-                    result.status = "completed"
-                    break
-
-            except Exception as e:
-                step.error = str(e)
-                logger.error(f"Native ReAct 步骤 {step_num} 异常: {traceback.format_exc()}")
-
-            step.duration_ms = (time.time() - step_start) * 1000
-            result.steps.append(step)
-            self._emit("step_end", {"step": step_num, "thought": step.thought[:200],
-                                    "action": step.action, "duration_ms": step.duration_ms})
-
-        else:
-            result.status = "max_steps"
-            result.final_answer = f"达到最大推理步数 ({self.max_steps})"
-
-        # 定期刷新收集的数据
-        collector.flush()
-
-        result.total_duration_ms = (time.time() - start_time) * 1000
-        self._emit("complete", {"status": result.status, "steps": len(result.steps),
-                                "duration_ms": result.total_duration_ms})
-        return result
 
     def cancel(self):
         self._cancelled = True
@@ -418,7 +322,6 @@ class ReActEngine:
 
     def run(self, task: str, system_prompt: str = "", history: list = None,
             skill_tools: list = None) -> AgentResult:
-        """执行 ReAct 推理循环"""
         from taiji.agent_ext.tool_registry import registry
         from taiji.agent_ext.skill_manager import skill_manager
 
@@ -426,22 +329,15 @@ class ReActEngine:
         result = AgentResult(task=task)
         start_time = time.time()
 
-        # ── ModelSelf 原生快速路径 ──
-        if self._is_native_model():
-            return self._run_native(task, result, start_time, registry)
-
-        # 获取工具 Schema（如果有技能过滤则只返回技能工具）
         if skill_tools:
-            tool_schemas = [t.to_schema() for t in 
+            tool_schemas = [t.to_schema() for t in
                            [registry.get(n) for n in skill_tools if registry.get(n)]]
         else:
             tool_schemas = registry.get_tool_schemas()
 
-        # 构建系统提示
         if not system_prompt:
             tool_desc = registry.get_tool_descriptions()
             if skill_tools:
-                # 只列出技能工具的描述
                 lines = ["可用工具:"]
                 for name in skill_tools:
                     t = registry.get(name)
@@ -450,7 +346,6 @@ class ReActEngine:
                 tool_desc = "\n".join(lines)
             system_prompt = self._build_system_prompt(tool_desc)
 
-        # 检查是否有技能系统提示
         skill_prompt = skill_manager.get_skill_system_prompt()
         if skill_prompt:
             system_prompt = skill_prompt + "\n\n" + system_prompt
@@ -486,7 +381,6 @@ class ReActEngine:
                 if content:
                     step.thought = content
 
-                # 检查最终答案
                 if self._is_final_answer(content, tool_calls, step_num):
                     step.is_final = True
                     step.observation = content
@@ -506,7 +400,6 @@ class ReActEngine:
                             except json.JSONDecodeError:
                                 tool_args = {"input": tool_args}
 
-                        # 检查是否在技能工具范围内
                         if skill_tools and tool_name not in skill_tools:
                             step.observation = f"工具 {tool_name} 不在当前技能范围内"
                             messages.append({"role": "assistant", "content": content or ""})
@@ -515,13 +408,10 @@ class ReActEngine:
 
                         step.action = tool_name
                         step.action_args = tool_args
-
                         self._emit("tool_call", {"step": step_num, "tool": tool_name, "args": tool_args})
                         observation = registry.execute(tool_name, tool_args)
                         step.observation = observation
-
                         self._emit("observation", {"step": step_num, "tool": tool_name, "result": observation[:500]})
-
                         messages.append({
                             "role": "assistant",
                             "content": content or "",
@@ -540,19 +430,19 @@ class ReActEngine:
 
             step.duration_ms = (time.time() - step_start) * 1000
             result.steps.append(step)
-            self._emit("step_end", {"step": step_num, "thought": step.thought[:200], "action": step.action, "duration_ms": step.duration_ms})
-
+            self._emit("step_end", {"step": step_num, "thought": step.thought[:200],
+                                    "action": step.action, "duration_ms": step.duration_ms})
         else:
             result.status = "max_steps"
             result.final_answer = f"达到最大推理步数 ({self.max_steps})"
 
         result.total_duration_ms = (time.time() - start_time) * 1000
-        self._emit("complete", {"status": result.status, "steps": len(result.steps), "duration_ms": result.total_duration_ms})
+        self._emit("complete", {"status": result.status, "steps": len(result.steps),
+                                "duration_ms": result.total_duration_ms})
         return result
 
     def run_stream(self, task: str, system_prompt: str = "", history: list = None,
                    skill_tools: list = None):
-        """流式执行 ReAct 推理"""
         from taiji.agent_ext.tool_registry import registry
         from taiji.agent_ext.skill_manager import skill_manager
 
@@ -615,11 +505,9 @@ class ReActEngine:
                                 tool_args = json.loads(tool_args)
                             except json.JSONDecodeError:
                                 tool_args = {"input": tool_args}
-
                         yield {"type": "action", "data": {"step": step_num, "tool": tool_name, "args": tool_args}}
                         observation = registry.execute(tool_name, tool_args)
                         yield {"type": "observation", "data": {"step": step_num, "tool": tool_name, "result": observation[:1000]}}
-
                         messages.append({"role": "assistant", "content": content or "",
                                          "tool_calls": [{"id": f"call_{step_num}", "type": "function",
                                                          "function": {"name": tool_name, "arguments": json.dumps(tool_args)}}]})
@@ -635,7 +523,6 @@ class ReActEngine:
         yield {"type": "done", "data": {}}
 
     def _call_llm(self, system_prompt: str, messages: list, tools: list) -> dict:
-        """调用态极自己的大脑推理。"""
         full_messages = [{"role": "system", "content": system_prompt}] + messages
         return self._call_local_model(full_messages)
 
@@ -669,50 +556,62 @@ class ReActEngine:
             return {"error": str(e)}
 
     def _call_local_model(self, messages: list, available_tools: list = None) -> dict:
-        """用态极自己的大脑推理（NativeInferenceEngine 优先，trainer 回退）"""
+        """
+        态极推理核心。
+
+        架构: ModelSelf (5头: language/tool/perception/memory/plan)
+        native-v2: SentencePiece tokenizer + contract offset
+        """
         from taiji.core.app_state import app_state
 
-        # 构建 prompt
+        content = ""
+        _inference_error = None
+        tokenizer = app_state.get_tokenizer()
+
+        # 构建 prompt (态极统一格式)
         prompt_parts = []
         for msg in messages:
             role = msg.get("role", "user")
-            content = msg.get("content", "")
+            content_str = msg.get("content", "")
             if role == "system":
-                prompt_parts.append(f"[系统] {content}")
+                prompt_parts.append(f"[系统] {content_str}")
             elif role == "user":
-                prompt_parts.append(f"[用户] {content}")
+                prompt_parts.append(f"[用户] {content_str}")
             elif role == "assistant":
-                prompt_parts.append(f"[助手] {content}")
+                prompt_parts.append(f"[助手] {content_str}")
             elif role == "tool":
-                prompt_parts.append(f"[工具结果] {content}")
+                prompt_parts.append(f"[工具结果] {content_str}")
         prompt = "\n".join(prompt_parts) + "\n[助手]"
 
-        content = ""
-
-        # 优先使用态极原生推理引擎
+        # 推理
         try:
-            taiji = app_state.get_taiji_engine()
-            tokenizer = app_state.get_tokenizer()
-            if taiji and tokenizer:
-                from taiji.core.inference import NativeInferenceEngine
-                engine = NativeInferenceEngine(taiji, tokenizer)
-                content = engine.generate(prompt, max_new_tokens=800, temperature=0.4)
-                content = content.strip()
-        except Exception as e:
-            logger.debug(f"态极原生推理失败: {e}")
-
-        # 回退到 trainer
-        if not content:
-            try:
-                trainer = app_state.trainer
-                if trainer and hasattr(trainer, 'generate'):
-                    content = trainer.generate(prompt, max_new_tokens=800, temperature=0.4)
+            trainer = app_state.trainer
+            if trainer and tokenizer:
+                if hasattr(trainer, 'generate'):
+                    content = trainer.generate(prompt, tokenizer, max_new_tokens=800, temperature=0.4)
                     content = content.strip()
-            except Exception as e:
-                logger.warning(f"trainer 推理失败: {e}")
+                elif hasattr(trainer, 'generate_stream'):
+                    chunks = []
+                    for chunk in trainer.generate_stream(prompt, tokenizer, max_new_tokens=800, temperature=0.4):
+                        chunks.append(chunk)
+                    content = "".join(chunks).strip()
+        except Exception as e:
+            _inference_error = e
+            logger.warning(f"推理失败: {e}")
 
         if not content:
-            return {"error": "态极大脑未加载，请先加载模型。"}
+            error_detail = ""
+            if _inference_error:
+                error_detail = f"\n推理错误: {str(_inference_error)[:200]}"
+            elif app_state.startup_error:
+                error_detail = f"\n详细错误: {app_state.startup_error[:200]}"
+            elif not app_state.startup_complete:
+                error_detail = "\n模型正在加载中，请稍候重试。"
+            elif not app_state.model:
+                error_detail = "\n模型未加载，请在设置中检查模型配置。"
+            else:
+                error_detail = "\n模型已加载但推理返回空结果，请检查模型文件是否完整。"
+            return {"error": f"态极大脑未加载。{error_detail}\n请在设置中检查模型配置，或等待模型加载完成后重试。"}
 
         # 使用多策略解析器提取工具调用
         tool_names = [s.get("function", {}).get("name", "") for s in (available_tools or [])]
@@ -720,7 +619,7 @@ class ReActEngine:
         if tool_calls:
             return {"content": "", "tool_calls": tool_calls}
 
-        # 自修复：第一次解析失败时重试一次
+        # 自修复：第一次解析失败时重试一次（仅对长内容）
         if content and len(content) > 10:
             repair_result = self._self_repair(content, messages, available_tools)
             if repair_result:
@@ -728,52 +627,49 @@ class ReActEngine:
 
         return {"content": content, "tool_calls": []}
 
-    def _self_repair(self, raw_output: str, messages: list, available_tools: list = None) -> dict:
-        """自修复机制：当工具调用解析失败时，请求 LLM 修正格式"""
+    def _self_repair(self, raw_output, messages, available_tools=None):
         try:
             from taiji.core.app_state import app_state
             trainer = app_state.trainer
             if not trainer or not hasattr(trainer, 'generate'):
                 return None
-
-            tool_names = [s.get("function", {}).get("name", "") for s in (available_tools or [])]
-            tool_list = ", ".join(tool_names[:10]) if tool_names else "无"
-
+            tool_names = [s.get('function', {}).get('name', '') for s in (available_tools or [])]
+            tool_list = ', '.join(tool_names[:10]) if tool_names else 'no tools'
             repair_prompt = (
-                f"[系统] 你的上一条回复无法被解析为有效的工具调用。\n"
-                f"原始回复: {raw_output[:300]}\n\n"
-                f"可用工具: {tool_list}\n\n"
-                f"请严格按照以下 JSON 格式重新输出工具调用（只输出 JSON，不要其他内容）:\n"
-                f'{{"tool": "工具名", "args": {{"参数": "值"}}}}\n'
-                f"[助手]"
+                '[system] Your last reply could not be parsed as a valid tool call.\n'
+                'Original reply: ' + raw_output[:300] + '\n\n'
+                'Available tools: ' + tool_list + '\n\n'
+                'Please re-output the tool call in strict JSON format (JSON only, no other content):\n'
+                '{"tool": "tool_name", "args": {"param": "value"}}\n'
+                '[assistant]'
             )
-            response = trainer.generate(repair_prompt, max_new_tokens=300, temperature=0.1,
-                                         stop_sequences=["[用户]", "[系统]"])
+            tokenizer = app_state.get_tokenizer()
+            response = trainer.generate(repair_prompt, tokenizer, max_new_tokens=300, temperature=0.1)
             content = response.strip()
             tool_calls = self._tool_parser.parse(content, available_tools=tool_names)
             if tool_calls:
-                logger.info("自修复成功：LLM 已修正工具调用格式")
-                return {"content": "", "tool_calls": tool_calls}
+                logger.info('Self-repair succeeded')
+                return {'content': '', 'tool_calls': tool_calls}
         except Exception as e:
-            logger.debug(f"自修复失败: {e}")
+            logger.debug(f'Self-repair failed: {e}')
         return None
 
-    def _build_system_prompt(self, tool_descriptions: str, tool_schemas: list = None) -> str:
-        """构建增强版系统提示（含 few-shot 示例和严格格式约束）"""
-        few_shot = ""
+    def _build_system_prompt(self, tool_descriptions, tool_schemas=None):
+        few_shot = ''
         if tool_schemas:
             generator = FewShotGenerator()
             few_shot = generator.generate(tool_schemas, max_examples=2)
             if few_shot:
-                few_shot = f"\n## 示例\n{few_shot}\n"
+                few_shot = '\n\n## 示例\n' + few_shot + '\n'
 
-        return f"""你是一个自主推理的 AI Agent。通过思考、选择工具、执行、观察结果来完成任务。
+        return f"""你是态极（Taiji），一个本地运行的AI助手。你可以直接回答问题，也可以使用工具来完成任务。
 
-## 工具列表
+## 可用工具
 {tool_descriptions}
 
-## 输出格式（严格遵守）
-调用工具时，必须输出以下 JSON 格式（不要输出其他内容）：
+## 回答方式
+- 如果问题可以直接回答，用自然语言回答即可
+- 如果需要搜索或使用工具，输出以下 JSON 格式：
 ```json
 {{"tool": "工具名", "args": {{"参数名": "值"}}}}
 ```
@@ -781,55 +677,50 @@ class ReActEngine:
 ## 规则
 - 每次只调用一个工具
 - 只能使用上述列出的工具
-- 如果任务已完成，直接用自然语言给出最终答案（不要包含 JSON）
-- 保持简洁"""
+- 保持简洁、准确"""
 
-    def _is_final_answer(self, content: str, tool_calls: list, step_num: int) -> bool:
+    def _is_final_answer(self, content, tool_calls, step_num):
+        """判断是否为最终答案（融合文本模式 + 行动模式）"""
         if tool_calls:
             return False
         if not content:
             return False
-        final_markers = ["最终答案", "Final Answer", "任务完成", "已完成", "总结"]
+        # 显式最终答案标记
+        final_markers = ['最终答案', 'Final Answer', 'final answer', 'DONE', '任务完成']
         for marker in final_markers:
             if marker in content:
                 return True
-        # 至少经过 2 步推理才允许直接作为最终答案
-        return step_num >= 2 and not tool_calls and len(content) > 20
+        # 第一步无工具调用 + 内容足够长 → 直接视为最终回答（文本模式）
+        if not tool_calls and len(content) > 15:
+            return True
+        return False
 
 
 class AgentController:
-    """Agent 主控制器"""
-
-    def __init__(self, max_steps: int = 15):
+    def __init__(self, max_steps=15):
         self.engine = ReActEngine(max_steps=max_steps)
-        self._task_history: list = []
+        self._task_history = []
 
-    def run_task(self, task: str, stream_callback: Callable = None, skill_id: str = None) -> AgentResult:
+    def run_task(self, task, stream_callback=None, skill_id=None):
         from taiji.agent_ext.skill_manager import skill_manager
         if stream_callback:
             self.engine.stream_callback = stream_callback
-
         skill_tools = None
         if skill_id:
             skill = skill_manager.activate_skill(skill_id)
             if skill:
                 skill_tools = skill.tools
-
         result = self.engine.run(task, history=self._task_history[-10:], skill_tools=skill_tools)
-
-        self._task_history.append({"role": "user", "content": task})
+        self._task_history.append({'role': 'user', 'content': task})
         if result.final_answer:
-            self._task_history.append({"role": "assistant", "content": result.final_answer})
-
-        # 从成功的任务中学习
-        if result.status == "completed" and len(result.steps) >= 2:
-            skill_manager.learn_from_task(task, 
-                [{"thought": s.thought, "action": s.action} for s in result.steps],
+            self._task_history.append({'role': 'assistant', 'content': result.final_answer})
+        if result.status == 'completed' and len(result.steps) >= 2:
+            skill_manager.learn_from_task(task,
+                [{'thought': s.thought, 'action': s.action} for s in result.steps],
                 result.final_answer)
-
         return result
 
-    def run_task_stream(self, task: str, skill_id: str = None):
+    def run_task_stream(self, task, skill_id=None):
         from taiji.agent_ext.skill_manager import skill_manager
         skill_tools = None
         if skill_id:
@@ -844,5 +735,5 @@ class AgentController:
     def clear_history(self):
         self._task_history.clear()
 
-    def get_history(self) -> list:
+    def get_history(self):
         return self._task_history.copy()

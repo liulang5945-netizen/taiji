@@ -56,12 +56,13 @@ def generate_data(
 
 
 def create_or_load_model(
-    size: str = "125m",
+    size: str = None,
     device: str = "cpu",
     resume: Optional[str] = None,
 ) -> tuple:
     """
     创建新模型或加载 checkpoint。
+    size 为 None 时从 config.json 自动检测。
 
     Returns:
         (model, tokenizer)
@@ -69,13 +70,19 @@ def create_or_load_model(
     from taiji.loader import create_model, load_model
     from taiji.config import ModelConfig
 
-    # 默认只启用语言头+工具头（感知/记忆/规划头无训练数据）
     default_active_heads = ["language", "tool"]
 
     if resume and os.path.exists(resume):
         logger.info(f"Loading checkpoint from {resume}")
         model, tokenizer = load_model(resume, device=device)
+        # 自动检测模型大小
+        total_params = sum(p.numel() for p in model.parameters())
+        logger.info(f"Loaded model: {total_params/1e6:.0f}M params")
         return model, tokenizer
+
+    # size 为 None 时默认 350m (native-v2 标准规模)
+    if size is None:
+        size = "350m"
 
     logger.info(f"Creating new model: {size}")
     model, tokenizer = create_model(size, device=device, active_heads=default_active_heads)
@@ -399,8 +406,8 @@ def main():
     parser = argparse.ArgumentParser(description="ModelSelf Training Pipeline")
 
     # 模型参数
-    parser.add_argument("--size", type=str, default="125m", choices=["125m", "350m", "1b"],
-                        help="模型大小")
+    parser.add_argument("--size", type=str, default=None, choices=["125m", "350m", "1b", "3b", "7b"],
+                        help="模型大小 (不指定则从 config 自动检测)")
     parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda"],
                         help="训练设备")
     parser.add_argument("--resume", type=str, default=None,

@@ -239,6 +239,11 @@ class BodyCore:
 
     def get_status(self) -> dict:
         """获取躯干状态"""
+        # 使用懒加载属性，确保模块被加载
+        limbs_ok = self.limbs is not None
+        metabolism_ok = self.metabolism is not None
+        senses_ok = self.senses is not None
+
         return {
             "device": self._device,
             "has_model": self._model is not None,
@@ -246,7 +251,7 @@ class BodyCore:
             "has_tokenizer": self._tokenizer is not None,
             "has_action_provider": self._action_provider is not None,
             "healthy": self.is_healthy(),
-            "limbs_available": self._limbs is not None,
-            "metabolism_available": self._metabolism is not None,
-            "senses_available": self._senses is not None,
+            "limbs_available": limbs_ok,
+            "metabolism_available": metabolism_ok,
+            "senses_available": senses_ok,
         }

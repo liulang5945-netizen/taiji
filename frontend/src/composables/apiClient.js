@@ -1,6 +1,23 @@
-export const API_BASE = import.meta.env.DEV
-  ? ''
-  : `${window.location.protocol}//${window.location.hostname}:8000`
+function resolveApiBase() {
+  if (typeof window === 'undefined') return ''
+
+  const params = new URLSearchParams(window.location.search)
+  const hashQuery = window.location.hash.includes('?')
+    ? new URLSearchParams(window.location.hash.slice(window.location.hash.indexOf('?') + 1))
+    : new URLSearchParams()
+
+  if (params.get('taiji_client') === 'desktop' || hashQuery.get('taiji_client') === 'desktop') {
+    return `${window.location.protocol}//${window.location.hostname}:8000`
+  }
+
+  if (import.meta.env.DEV) return ''
+
+  const { protocol, hostname, port } = window.location
+  if (port === '8000') return ''
+  return `${protocol}//${hostname}:8000`
+}
+
+export const API_BASE = resolveApiBase()
 
 export async function authFetch(url, options = {}) {
   const token = localStorage.getItem('jwt_token') || ''

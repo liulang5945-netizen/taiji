@@ -14,7 +14,7 @@ export function useSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       })
-    } catch (e) { /* silent fail */ }
+    } catch (e) { console.warn('[Settings] 保存失败:', e.message) }
   }
 
   const debouncedSaveSettings = (settings) => {

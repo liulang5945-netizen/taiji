@@ -1,3 +1,4 @@
+
 /**
  * API 连接与健康检查 composable
  * 态极专属 — 无需模型切换/下载等功能
@@ -65,15 +66,53 @@ export function useApi() {
     runtimeStore.syncHealth(state, msg, modelLoaded.value);
   }
 
-  async function checkHealth() {
+  /**
+   * Check bootstrap status (public, no auth required).
+   * Returns bootstrap data or null on failure.
+   */
+  async function checkBootstrap() {
     try {
       const controller = new AbortController();
-      const timeout = 20000;
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const resp = await fetch(`${API_BASE}/api/runtime/bootstrap`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) return null;
+      const ctype = resp.headers.get('content-type') || '';
+      if (!ctype.includes('application/json')) return null;
+      return await resp.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function checkHealth() {
+    try {
+      // Step 1: Use public bootstrap endpoint to determine auth state
+      const bootstrap = await checkBootstrap();
+      if (bootstrap) {
+        runtimeStore.applyBootstrap(bootstrap);
+        if (bootstrap.need_login && !localStorage.getItem('jwt_token')) {
+          // Auth required but no token — show login, don't poll protected endpoint
+          syncAppState('connecting', '需要登录');
+          consecutiveFailures = 0;
+          return false;
+        }
+      }
+
+      // Step 2: Fetch full runtime status (requires auth when auth is enabled)
+      const controller = new AbortController();
+      const timeout = 5000;
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       const resp = await authFetch(`${API_BASE}/api/runtime/status`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!resp.ok) {
+        if (resp.status === 401) {
+          // Token expired or invalid — signal login needed
+          syncAppState('connecting', '需要重新登录');
+          return false;
+        }
         handleHealthFailure(`后端返回错误 (HTTP ${resp.status})`);
         return false;
       }
@@ -128,8 +167,12 @@ export function useApi() {
         return false;
       }
       if (connectionState.value === 'unknown' || connectionState.value === 'connecting') {
-        syncAppState('connecting', '正在连接后端服务...');
-        consecutiveFailures = 0;
+        consecutiveFailures++;
+        if (consecutiveFailures >= 5) {
+          syncAppState('error', '无法连接到后端服务，请确认后端已启动');
+        } else {
+          syncAppState('connecting', '正在连接后端服务...');
+        }
         return false;
       }
       if (isChatReceiving) return false;
@@ -157,7 +200,6 @@ export function useApi() {
   function startHealthCheck() {
     stopHealthCheck();
     consecutiveFailures = 0;
-    runtimeStore.refreshAll().catch(() => {});
     checkHealth().catch(() => {});
     healthCheckTimer = setInterval(async () => {
       try {

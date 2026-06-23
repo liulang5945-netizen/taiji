@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from taiji.core.app_state import app_state
 from taiji.core.config import TrainingConfig, save_config
 from taiji.core.utils import get_external_path
+from taiji.services.settings_service import load_settings, save_settings
 
 from .models import GGUFExportRequest
 
@@ -409,17 +410,12 @@ async def download_model(req: dict):
                         _download_tasks[task_id]["file_path"] = file_path
                         _download_tasks[task_id]["progress"] = downloader.progress
                         # 自动保存设置并热加载
-                        settings_path = get_external_path("app_settings.json")
-                        settings = {}
-                        if os.path.exists(settings_path):
-                            with open(settings_path, "r", encoding="utf-8") as f:
-                                settings = json.load(f)
+                        settings = load_settings()
                         settings["model_type"] = "gguf"
                         settings["gguf_path"] = file_path
                         settings["n_gpu_layers"] = -1
                         settings["n_ctx"] = 2048
-                        with open(settings_path, "w", encoding="utf-8") as f:
-                            json.dump(settings, f, ensure_ascii=False, indent=2)
+                        save_settings(settings)
                         # 自动热加载
                         try:
                             from taiji.model_ext.model_setup import load_gguf_model
@@ -802,11 +798,7 @@ def select_model(req: dict):
         model_path = req.get("path", "")
         if not model_path or not os.path.exists(model_path):
             return {"status": "error", "message": "模型路径无效"}
-        settings_path = get_external_path("app_settings.json")
-        settings = {}
-        if os.path.exists(settings_path):
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+        settings = load_settings()
 
         # 根据路径特征和已有配置判断模型类型
         model_type = req.get("model_type", "")
@@ -827,8 +819,7 @@ def select_model(req: dict):
             settings["gguf_path"] = ""
         settings["n_gpu_layers"] = settings.get("n_gpu_layers", -1)
         settings["n_ctx"] = settings.get("n_ctx", 2048)
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
+        save_settings(settings)
         return {"status": "ok", "message": "模型已切换，重启后生效"}
     except Exception as e:
         return {"status": "error", "message": str(e)}

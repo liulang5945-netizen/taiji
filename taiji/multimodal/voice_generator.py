@@ -30,7 +30,7 @@ class TaijiVoiceGenerator:
     ]
     
     def __init__(self, output_dir: str = "./agent_workspace/audio",
-                 engine: str = "edge_tts"):
+                 engine: str = "pyttsx3"):
         self.output_dir = output_dir
         self.engine = engine
         os.makedirs(output_dir, exist_ok=True)
@@ -50,7 +50,12 @@ class TaijiVoiceGenerator:
             {"success": bool, "path": str, "duration_estimate": float}
         """
         if self.engine == "edge_tts":
-            return self._synthesize_edge_tts(text, voice, rate, volume)
+            result = self._synthesize_edge_tts(text, voice, rate, volume)
+            if result.get("success"):
+                return result
+            # edge-tts 失败（可能无网络），降级到 pyttsx3
+            logger.warning(f"edge-tts 失败，降级到 pyttsx3: {result.get('error', '')}")
+            return self._synthesize_pyttsx3(text)
         elif self.engine == "pyttsx3":
             return self._synthesize_pyttsx3(text)
         else:

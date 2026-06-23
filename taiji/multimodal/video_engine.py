@@ -12,6 +12,8 @@ import time
 import json
 from typing import Optional, Dict, List
 
+from taiji.services.settings_service import load_settings
+
 logger = logging.getLogger("Taiji.Video")
 
 
@@ -156,36 +158,31 @@ class TaijiVideoEngine:
     def _generate_cloud(self, prompt: str, duration: int) -> Dict:
         """云端 API 生成视频"""
         try:
-            settings_path = os.path.join(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))), "app_settings.json")
-            if not os.path.exists(settings_path):
-                return {"success": False, "path": "", "error": "未找到设置文件"}
-
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+            settings = load_settings()
 
             api_key = settings.get("cloud_api_key", "")
             api_base = settings.get("cloud_api_base", "")
             if not api_key or not api_base:
                 return {"success": False, "path": "", "error": "未配置云端 API"}
 
-            import requests
+            import urllib.request
             url = api_base.rstrip("/") + "/videos/generations"
-            payload = {"prompt": prompt, "duration": duration, "n": 1}
+            payload = json.dumps({"prompt": prompt, "duration": duration, "n": 1}).encode('utf-8')
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            resp = requests.post(url, json=payload, headers=headers, timeout=120)
-
-            if resp.status_code == 200:
-                data = resp.json()
-                video_url = data.get("data", [{}])[0].get("url", "")
-                if video_url:
-                    vid_resp = requests.get(video_url, timeout=60)
-                    filename = f"video_{int(time.time())}.mp4"
-                    filepath = os.path.join(self.output_dir, filename)
-                    with open(filepath, "wb") as f:
-                        f.write(vid_resp.content)
-                    return {"success": True, "path": filepath, "backend": "cloud"}
-            return {"success": False, "path": "", "error": f"API 返回 {resp.status_code}"}
+            req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            video_url = data.get("data", [{}])[0].get("url", "")
+            if video_url:
+                vid_req = urllib.request.Request(video_url)
+                with urllib.request.urlopen(vid_req, timeout=60) as vid_resp:
+                    vid_data = vid_resp.read()
+                filename = f"video_{int(time.time())}.mp4"
+                filepath = os.path.join(self.output_dir, filename)
+                with open(filepath, "wb") as f:
+                    f.write(vid_data)
+                return {"success": True, "path": filepath, "backend": "cloud"}
+            return {"success": False, "path": "", "error": "API 未返回视频 URL"}
         except Exception as e:
             return {"success": False, "path": "", "error": str(e)}
 

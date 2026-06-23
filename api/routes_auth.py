@@ -53,15 +53,49 @@ async def auth_status():
 
 
 @router.post("/api/auth/enable")
-async def enable_auth(req: EnableAuthRequest):
-    """启用认证（设置用户名和密码）"""
+async def enable_auth(req: EnableAuthRequest, request: Request):
+    """
+    启用认证（设置用户名和密码）
+    安全策略：
+    - 首次运行（认证未启用）时可直接调用
+    - 认证已启用后需要提供有效的管理员 Token
+    """
+    from taiji.core.security import AuthManager
+    auth = AuthManager()
+
+    # 如果认证已启用，需要验证现有 Token
+    if auth.enabled:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="认证已启用，请提供有效的管理员 Token")
+        token = auth_header[7:]
+        payload = auth.verify_token(token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
     auth_service.enable_auth(req.username, req.password)
     return {"status": "success", "message": "认证已启用"}
 
 
 @router.post("/api/auth/disable")
-async def disable_auth():
-    """禁用认证"""
+async def disable_auth(request: Request):
+    """禁用认证 — 需要有效的管理员 Token"""
+    from taiji.core.security import AuthManager
+    auth = AuthManager()
+
+    # 认证未启用时，禁止通过此端点操作（防止竞态条件）
+    if not auth.enabled:
+        raise HTTPException(status_code=400, detail="认证未启用")
+
+    # 验证现有 Token
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="缺少认证 Token")
+    token = auth_header[7:]
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
     auth_service.disable_auth()
     return {"status": "success", "message": "认证已禁用"}
 

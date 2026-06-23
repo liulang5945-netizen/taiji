@@ -710,10 +710,14 @@ class AutoUpgrader:
         }
 
     def _detect_current_size(self) -> str:
-        """检测当前态极模型大小（纯 ModelSelf 架构）"""
+        """检测当前态极模型大小（从模型参数自动推断）"""
         try:
-            from core.app_state import app_state
+            from taiji.core.app_state import app_state
             if app_state.model is not None:
+                # 优先用 ModelConfig.size_label
+                if hasattr(app_state.model, 'config') and hasattr(app_state.model.config, 'size_label'):
+                    return app_state.model.config.size_label
+                # 回退：从参数量推断
                 total_params = sum(p.numel() for p in app_state.model.parameters())
                 if total_params >= 3e9:
                     return "7B"
@@ -724,10 +728,35 @@ class AutoUpgrader:
                 elif total_params >= 200e6:
                     return "350M"
                 else:
-                    return "125M"
+                    return f"{total_params/1e6:.0f}M"
         except Exception:
             pass
-        return "125M"
+        # 从 config.json 推断
+        try:
+            from taiji.core.config import TrainingConfig
+            config = TrainingConfig()
+            if config.model_name and os.path.isdir(config.model_name):
+                config_path = os.path.join(config.model_name, "config.json")
+                if os.path.exists(config_path):
+                    import json
+                    with open(config_path) as f:
+                        cfg = json.load(f)
+                    h = cfg.get("hidden_size", 768)
+                    layers = cfg.get("num_hidden_layers", 12)
+                    est = layers * (4 * h * h + 3 * h * cfg.get("intermediate_size", h * 4))
+                    if est >= 3e9:
+                        return "7B"
+                    elif est >= 1e9:
+                        return "3B"
+                    elif est >= 500e6:
+                        return "1B"
+                    elif est >= 200e6:
+                        return "350M"
+                    else:
+                        return f"{est/1e6:.0f}M"
+        except Exception:
+            pass
+        return "unknown"
     
     def _evaluate_model(self, model, tokenizer, eval_data: list) -> dict:
         """简单评估新模型"""
