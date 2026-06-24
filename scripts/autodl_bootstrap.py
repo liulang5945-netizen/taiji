@@ -23,10 +23,17 @@ import math
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# 必须在任何 import huggingface_hub 之前设置镜像
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+# 全局 socket 超时 30 秒，防止 HuggingFace 连接挂起
+socket.setdefaulttimeout(30)
 
 
 # ============================================================
@@ -163,29 +170,51 @@ def download_data(max_records: int = 100_000) -> None:
                 print(f"  {f.name}: {size_mb:.1f} MB")
             return
 
-    # 在 Python 内部设置 HuggingFace 镜像（确保生效）
-    if not os.environ.get("HF_ENDPOINT"):
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    print(f"  HF_ENDPOINT={os.environ.get('HF_ENDPOINT', '(默认)')}")
+    # 在 Python 内部设置 HuggingFace 镜像（必须在 import huggingface_hub 之前）
+    os.environ["HF_ENDPOINT"] = os.environ.get("HF_ENDPOINT") or "https://hf-mirror.com"
+    # 同时设置 HTTP_PROXY / HTTPS_PROXY 兼容
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    print(f"  HF_ENDPOINT={os.environ['HF_ENDPOINT']}")
 
-    # 快速测试 HuggingFace 连通性
-    print("  测试 HuggingFace 连通性...")
+    # 强制重新加载 huggingface_hub 以使用新 endpoint
+    for mod_name in list(sys.modules.keys()):
+        if "huggingface" in mod_name:
+            del sys.modules[mod_name]
+
+    try:
+        import huggingface_hub
+        from huggingface_hub import HfApi, hf_hub_download
+        # 强制修改库内部常量，确保 API 调用也走镜像
+        hf_endpoint = os.environ["HF_ENDPOINT"]
+        try:
+            huggingface_hub.constants.HF_HUB_URL = hf_endpoint
+            huggingface_hub.constants._HF_DEFAULT_ENDPOINT = hf_endpoint
+            huggingface_hub.constants.ENDPOINT = hf_endpoint
+        except Exception:
+            pass
+        print(f"  huggingface_hub 版本: {huggingface_hub.__version__}")
+        print(f"  HF_HUB_URL: {getattr(huggingface_hub.constants, 'HF_HUB_URL', '?')}")
+    except ImportError:
+        print("❌ huggingface_hub 未安装")
+        sys.exit(1)
+
+    # 快速测试 API 连通性（5 秒超时）
+    print("  测试 HuggingFace API 连通性...")
     import urllib.request
     hf_reachable = False
-    for endpoint in ["https://hf-mirror.com", "https://huggingface.co"]:
-        try:
-            req = urllib.request.Request(endpoint, method="HEAD")
-            req.add_header("User-Agent", "taiji-bootstrap/1.0")
-            resp = urllib.request.urlopen(req, timeout=10)
-            print(f"  ✅ {endpoint} 可达 (status={resp.status})")
-            os.environ["HF_ENDPOINT"] = endpoint
-            hf_reachable = True
-            break
-        except Exception as e:
-            print(f"  ❌ {endpoint} 不可达: {type(e).__name__}")
+    test_endpoint = os.environ["HF_ENDPOINT"]
+    api_test_url = f"{test_endpoint}/api/datasets/HuggingFaceFW/fineweb-edu/tree/main?limit=1"
+    try:
+        req = urllib.request.Request(api_test_url)
+        req.add_header("User-Agent", "taiji-bootstrap/1.0")
+        resp = urllib.request.urlopen(req, timeout=10)
+        print(f"  ✅ API 可达 (status={resp.status})")
+        hf_reachable = True
+    except Exception as e:
+        print(f"  ❌ API 不可达: {type(e).__name__}: {e}")
 
     if not hf_reachable:
-        print("  ⚠️  HuggingFace 完全不可达，直接使用示例数据")
+        print("  ⚠️  HuggingFace API 不可达，直接使用示例数据")
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         for source_name in DEFAULT_SOURCES:
             output_path = DATA_DIR / f"{source_name}.jsonl"
@@ -194,12 +223,6 @@ def download_data(max_records: int = 100_000) -> None:
                 size_mb = output_path.stat().st_size / (1024 * 1024)
                 print(f"  {source_name}: {size_mb:.1f} MB (示例数据)")
         return
-
-    try:
-        from huggingface_hub import HfApi, hf_hub_download
-    except ImportError:
-        print("❌ huggingface_hub 未安装")
-        sys.exit(1)
 
     import gzip
     try:
