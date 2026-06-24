@@ -52,6 +52,21 @@ DEFAULT_TRAINING_CONFIG = {
     "seed": 42,
 }
 
+_SKIP_DIR_NAMES = {".cache", "__pycache__", ".git", "node_modules"}
+_SKIP_FILE_NAMES = {"manifest.json"}
+_SKIP_FILE_SUFFIXES = {".lock", ".metadata"}
+
+
+def _should_skip_data_path(path: str) -> bool:
+    path_obj = Path(path)
+    if any(part in _SKIP_DIR_NAMES for part in path_obj.parts):
+        return True
+    if path_obj.name in _SKIP_FILE_NAMES:
+        return True
+    if any(path_obj.name.endswith(suffix) for suffix in _SKIP_FILE_SUFFIXES):
+        return True
+    return False
+
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -180,6 +195,8 @@ class NativeDataset(Dataset):
         self.lines = []
         for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
             for path in glob.glob(os.path.join(data_dir, pattern), recursive=True):
+                if _should_skip_data_path(path):
+                    continue
                 try:
                     with open(path, "r", encoding="utf-8", errors="ignore") as f:
                         for line in f:

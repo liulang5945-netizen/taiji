@@ -1,0 +1,21 @@
+# Taiji (态极) - AUTODL 训练专用依赖
+# 适用于 PyTorch 2.3+ / Python 3.12 / CUDA 12.1 环境
+# AUTODL 实例已预装 PyTorch，无需重复安装
+#
+# 使用方法:
+#   pip install -r requirements-autodl.txt
+
+# ===== 核心训练依赖 =====
+sentencepiece>=0.2.0,<1.0.0
+tiktoken>=0.7.0,<1.0.0
+numpy>=1.24.0,<3.0.0
+
+# ===== HuggingFace 生态 =====
+huggingface_hub>=0.20.0,<1.0.0
+
+# ===== 数据处理 =====
+pyarrow>=14.0.0,<20.0.0
+tqdm>=4.66.0,<5.0.0
+
+# ===== 训练监控 =====
+tensorboard>=2.14.0,<3.0.0
