@@ -163,6 +163,38 @@ def download_data(max_records: int = 100_000) -> None:
                 print(f"  {f.name}: {size_mb:.1f} MB")
             return
 
+    # 在 Python 内部设置 HuggingFace 镜像（确保生效）
+    if not os.environ.get("HF_ENDPOINT"):
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+    print(f"  HF_ENDPOINT={os.environ.get('HF_ENDPOINT', '(默认)')}")
+
+    # 快速测试 HuggingFace 连通性
+    print("  测试 HuggingFace 连通性...")
+    import urllib.request
+    hf_reachable = False
+    for endpoint in ["https://hf-mirror.com", "https://huggingface.co"]:
+        try:
+            req = urllib.request.Request(endpoint, method="HEAD")
+            req.add_header("User-Agent", "taiji-bootstrap/1.0")
+            resp = urllib.request.urlopen(req, timeout=10)
+            print(f"  ✅ {endpoint} 可达 (status={resp.status})")
+            os.environ["HF_ENDPOINT"] = endpoint
+            hf_reachable = True
+            break
+        except Exception as e:
+            print(f"  ❌ {endpoint} 不可达: {type(e).__name__}")
+
+    if not hf_reachable:
+        print("  ⚠️  HuggingFace 完全不可达，直接使用示例数据")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        for source_name in DEFAULT_SOURCES:
+            output_path = DATA_DIR / f"{source_name}.jsonl"
+            if not output_path.exists():
+                _create_sample_data(source_name, output_path, max_records)
+                size_mb = output_path.stat().st_size / (1024 * 1024)
+                print(f"  {source_name}: {size_mb:.1f} MB (示例数据)")
+        return
+
     try:
         from huggingface_hub import HfApi, hf_hub_download
     except ImportError:
