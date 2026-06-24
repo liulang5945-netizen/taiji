@@ -159,182 +159,39 @@ def install_deps() -> None:
 
 
 def download_data(max_records: int = 100_000) -> None:
-    banner("Step 2: 下载预训练数据")
+    banner("Step 2: 准备预训练数据")
 
     if DATA_DIR.exists():
         jsonl_files = list(DATA_DIR.glob("*.jsonl"))
         if len(jsonl_files) >= 4:
-            print(f"数据已存在 ({len(jsonl_files)} 个 JSONL 文件)，跳过下载。")
+            total_lines = 0
             for f in jsonl_files:
                 size_mb = f.stat().st_size / (1024 * 1024)
-                print(f"  {f.name}: {size_mb:.1f} MB")
+                with f.open("r") as fh:
+                    lines = sum(1 for _ in fh)
+                total_lines += lines
+                print(f"  {f.name}: {size_mb:.1f} MB, {lines} 条")
+            print(f"  总计: {len(jsonl_files)} 个文件, {total_lines} 条记录")
             return
 
-    # 在 Python 内部设置 HuggingFace 镜像（必须在 import huggingface_hub 之前）
-    os.environ["HF_ENDPOINT"] = os.environ.get("HF_ENDPOINT") or "https://hf-mirror.com"
-    # 同时设置 HTTP_PROXY / HTTPS_PROXY 兼容
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
-    print(f"  HF_ENDPOINT={os.environ['HF_ENDPOINT']}")
-
-    # 强制重新加载 huggingface_hub 以使用新 endpoint
-    for mod_name in list(sys.modules.keys()):
-        if "huggingface" in mod_name:
-            del sys.modules[mod_name]
-
-    try:
-        import huggingface_hub
-        from huggingface_hub import HfApi, hf_hub_download
-        # 强制修改库内部常量，确保 API 调用也走镜像
-        hf_endpoint = os.environ["HF_ENDPOINT"]
-        try:
-            huggingface_hub.constants.HF_HUB_URL = hf_endpoint
-            huggingface_hub.constants._HF_DEFAULT_ENDPOINT = hf_endpoint
-            huggingface_hub.constants.ENDPOINT = hf_endpoint
-        except Exception:
-            pass
-        print(f"  huggingface_hub 版本: {huggingface_hub.__version__}")
-        print(f"  HF_HUB_URL: {getattr(huggingface_hub.constants, 'HF_HUB_URL', '?')}")
-    except ImportError:
-        print("❌ huggingface_hub 未安装")
-        sys.exit(1)
-
-    # 快速测试 API 连通性（5 秒超时）
-    print("  测试 HuggingFace API 连通性...")
-    import urllib.request
-    hf_reachable = False
-    test_endpoint = os.environ["HF_ENDPOINT"]
-    api_test_url = f"{test_endpoint}/api/datasets/HuggingFaceFW/fineweb-edu/tree/main?limit=1"
-    try:
-        req = urllib.request.Request(api_test_url)
-        req.add_header("User-Agent", "taiji-bootstrap/1.0")
-        resp = urllib.request.urlopen(req, timeout=10)
-        print(f"  ✅ API 可达 (status={resp.status})")
-        hf_reachable = True
-    except Exception as e:
-        print(f"  ❌ API 不可达: {type(e).__name__}: {e}")
-
-    if not hf_reachable:
-        print("  ⚠️  HuggingFace API 不可达，直接使用示例数据")
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        for source_name in DEFAULT_SOURCES:
-            output_path = DATA_DIR / f"{source_name}.jsonl"
-            if not output_path.exists():
-                _create_sample_data(source_name, output_path, max_records)
-                size_mb = output_path.stat().st_size / (1024 * 1024)
-                print(f"  {source_name}: {size_mb:.1f} MB (示例数据)")
-        return
-
-    import gzip
-    try:
-        import pyarrow.parquet as pq
-    except ImportError:
-        pq = None
-
-    raw_dir = PROJECT_DIR / "taiji_data" / "training_data" / "raw_pretrain_mix_v1"
+    # 直接使用示例数据（AUTODL 无法访问 HuggingFace）
+    # 后续可手动上传真实数据到 taiji_data/training_data/pretrain_mix_v1/
+    print("  ⚠️  AUTODL 无法直接访问 HuggingFace")
+    print("  使用内置示例数据启动训练链路验证")
+    print("  后续可通过 SCP 上传真实数据替换")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
-    api = HfApi()
 
     for source_name in DEFAULT_SOURCES:
-        source = SOURCES[source_name]
         output_path = DATA_DIR / f"{source_name}.jsonl"
-
-        if output_path.exists():
-            print(f"  {source_name}: 已存在，跳过")
-            continue
-
-        print(f"  下载 {source_name} ...")
-
-        try:
-            files = api.list_repo_files(source["repo_id"], repo_type="dataset")
-            matched = [f for f in files
-                       if f.startswith(source["file_prefix"]) and f.endswith(source["suffix"])]
-            matched.sort()
-            if not matched:
-                print(f"  ⚠️  {source_name}: 没有匹配的文件")
-                continue
-
-            target_dir = raw_dir / source_name
-            target_dir.mkdir(parents=True, exist_ok=True)
-
-            downloaded = []
-            for remote_file in matched[:1]:  # 只下载第一个 shard
-                try:
-                    local_path = hf_hub_download(
-                        repo_id=source["repo_id"],
-                        filename=remote_file,
-                        repo_type="dataset",
-                        local_dir=str(target_dir),
-                    )
-                    downloaded.append(Path(local_path))
-                except Exception as e:
-                    print(f"  ⚠️  下载失败 {remote_file}: {e}")
-
-            if not downloaded:
-                print(f"  ⚠️  {source_name}: 下载失败")
-                continue
-
-            # 标准化
-            written = 0
-            with output_path.open("w", encoding="utf-8", newline="\n") as out:
-                for dl_path in downloaded:
-                    try:
-                        if source["file_format"] == "parquet" and pq:
-                            pf = pq.ParquetFile(dl_path)
-                            for batch in pf.iter_batches():
-                                for row in batch.to_pylist():
-                                    if isinstance(row, dict) and isinstance(row.get(source["text_field"]), str):
-                                        text = row[source["text_field"]].strip()
-                                        if len(text) >= 32:
-                                            record = {"text": text, "source": source_name, "category": source["category"]}
-                                            out.write(json.dumps(record, ensure_ascii=False) + "\n")
-                                            written += 1
-                                            if written >= max_records:
-                                                break
-                                if written >= max_records:
-                                    break
-                        elif source["file_format"] == "jsonl":
-                            with dl_path.open("r", encoding="utf-8", errors="ignore") as f:
-                                for line in f:
-                                    try:
-                                        obj = json.loads(line.strip())
-                                        if isinstance(obj, dict) and isinstance(obj.get(source["text_field"]), str):
-                                            text = obj[source["text_field"]].strip()
-                                            if len(text) >= 32:
-                                                record = {"text": text, "source": source_name, "category": source["category"]}
-                                                out.write(json.dumps(record, ensure_ascii=False) + "\n")
-                                                written += 1
-                                                if written >= max_records:
-                                                    break
-                                    except json.JSONDecodeError:
-                                        pass
-                        elif source["file_format"] == "json.gz":
-                            import gzip as gz
-                            with gz.open(dl_path, "rt", encoding="utf-8", errors="ignore") as f:
-                                for line in f:
-                                    try:
-                                        obj = json.loads(line.strip())
-                                        if isinstance(obj, dict) and isinstance(obj.get(source["text_field"]), str):
-                                            text = obj[source["text_field"]].strip()
-                                            if len(text) >= 32:
-                                                record = {"text": text, "source": source_name, "category": source["category"]}
-                                                out.write(json.dumps(record, ensure_ascii=False) + "\n")
-                                                written += 1
-                                                if written >= max_records:
-                                                    break
-                                    except json.JSONDecodeError:
-                                        pass
-                    except Exception as e:
-                        print(f"  ⚠️  处理失败 {dl_path}: {e}")
-
-            print(f"  {source_name}: {written} 条记录")
-
-        except Exception as e:
-            print(f"  ❌ {source_name} 失败: {e}")
-            # 创建示例数据作为 fallback
-            print(f"  创建示例数据 {source_name} ...")
+        if not output_path.exists():
             _create_sample_data(source_name, output_path, max_records)
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        with output_path.open("r") as fh:
+            lines = sum(1 for _ in fh)
+        print(f"  {source_name}: {size_mb:.1f} MB, {lines} 条记录")
+
+    print(f"\n  💡 提示: 示例数据足以验证训练链路")
+    print(f"     正式训练前请上传真实数据到: {DATA_DIR}")
 
 
 def _create_sample_data(source_name: str, output_path: Path, max_records: int) -> None:
