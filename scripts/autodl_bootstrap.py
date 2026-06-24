@@ -891,10 +891,16 @@ def main():
                         help="每个数据源最大记录数 (默认: 100000)")
     args = parser.parse_args()
 
+    # 先切换到安全目录，避免 CWD 被删除导致 FileNotFoundError
+    os.chdir("/root/autodl-tmp")
+
     banner(f"态极 1B Native-V2 AUTODL 部署 - 阶段: {args.stage}")
     print(f"  项目目录: {PROJECT_DIR}")
     print(f"  Python: {sys.executable}")
-    print(f"  工作目录: {os.getcwd()}")
+    try:
+        print(f"  工作目录: {os.getcwd()}")
+    except FileNotFoundError:
+        print(f"  工作目录: (已切换到安全目录)")
 
     # 确保项目目录存在
     PROJECT_DIR.mkdir(parents=True, exist_ok=True)
