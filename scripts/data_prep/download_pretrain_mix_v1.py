@@ -37,6 +37,26 @@ SOURCES: dict[str, SourceSpec] = {
         category="general_web",
         note="High-quality educational web corpus.",
     ),
+    "fineweb2_en": SourceSpec(
+        name="fineweb2_en",
+        repo_id="HuggingFaceFW/fineweb-2",
+        file_prefix="data/eng_Latn/train/",
+        suffix=".parquet",
+        text_field="text",
+        file_format="parquet",
+        category="english_web",
+        note="Modern English slice from FineWeb2 for base-language coverage.",
+    ),
+    "falcon_refinedweb_en": SourceSpec(
+        name="falcon_refinedweb_en",
+        repo_id="tiiuae/falcon-refinedweb",
+        file_prefix="data/",
+        suffix=".parquet",
+        text_field="content",
+        file_format="parquet",
+        category="english_web",
+        note="Mirror-friendly English web corpus with direct parquet shards.",
+    ),
     "fineweb2_zh": SourceSpec(
         name="fineweb2_zh",
         repo_id="HuggingFaceFW/fineweb-2",
@@ -79,11 +99,62 @@ SOURCES: dict[str, SourceSpec] = {
     ),
 }
 
-DEFAULT_SOURCES = ["fineweb_edu", "skypile_zh", "openwebmath", "codeparrot_code"]
+DEFAULT_SOURCES = [
+    "fineweb_edu",
+    "fineweb2_en",
+    "skypile_zh",
+    "openwebmath",
+    "codeparrot_code",
+]
+
+SOURCE_PRESETS: dict[str, list[str]] = {
+    "stage0_smoke": [
+        "fineweb_edu",
+        "skypile_zh",
+        "openwebmath",
+        "codeparrot_code",
+    ],
+    "stage1_base_default": DEFAULT_SOURCES,
+    "english_boost": [
+        "fineweb_edu",
+        "fineweb2_en",
+    ],
+    "english_boost_mirror": [
+        "fineweb_edu",
+        "fineweb2_en",
+        "falcon_refinedweb_en",
+    ],
+    "chinese_boost": [
+        "skypile_zh",
+        "fineweb2_zh",
+    ],
+    "base_mirror_safe": [
+        "fineweb_edu",
+        "fineweb2_en",
+        "falcon_refinedweb_en",
+        "skypile_zh",
+        "openwebmath",
+        "codeparrot_code",
+    ],
+    "base_full_text": [
+        "fineweb_edu",
+        "fineweb2_en",
+        "falcon_refinedweb_en",
+        "fineweb2_zh",
+        "skypile_zh",
+        "openwebmath",
+        "codeparrot_code",
+    ],
+}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download Taiji pretraining mix v1")
+    parser.add_argument(
+        "--preset",
+        choices=sorted(SOURCE_PRESETS),
+        help="Named source bundle for staged 1B data expansion.",
+    )
     parser.add_argument(
         "--sources",
         default=",".join(DEFAULT_SOURCES),
@@ -106,6 +177,12 @@ def resolve_sources(raw_value: str) -> list[SourceSpec]:
     if unknown:
         raise ValueError(f"Unknown sources: {', '.join(unknown)}")
     return [SOURCES[name] for name in names]
+
+
+def resolve_sources_from_args(*, preset: str | None, raw_sources: str) -> list[SourceSpec]:
+    if preset:
+        return [SOURCES[name] for name in SOURCE_PRESETS[preset]]
+    return resolve_sources(raw_sources)
 
 
 def list_matching_files(api: HfApi, source: SourceSpec, limit: int) -> list[str]:
@@ -294,7 +371,7 @@ def print_summary(
 
 def main() -> None:
     args = parse_args()
-    selected_sources = resolve_sources(args.sources)
+    selected_sources = resolve_sources_from_args(preset=args.preset, raw_sources=args.sources)
     api = HfApi()
     raw_dir = Path(args.raw_dir)
     output_dir = Path(args.output_dir)

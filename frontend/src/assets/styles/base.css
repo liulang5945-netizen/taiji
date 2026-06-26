@@ -1,5 +1,6 @@
 /**
- * 态极 · 无极 —— 基础样式
+ * 态极 · 无极 —— 基础样式 v7
+ * 水墨美学
  */
 
 /* 基础 */
@@ -16,7 +17,7 @@
 
 a {
   text-decoration: none;
-  color: #6366f1;
+  color: var(--primary);
   transition: 0.2s;
 }
 
@@ -42,12 +43,12 @@ body {
 /* 滚动条 - 极简 */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.3); }
+::-webkit-scrollbar-thumb { background: rgba(26,26,26,0.2); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(26,26,26,0.3); }
 
 /* 全局焦点 */
 :focus-visible {
-  outline: 2px solid rgba(99,102,241,0.4);
+  outline: 2px solid var(--primary-light);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }

@@ -13,6 +13,7 @@ from scripts.data_prep.download_pretrain_mix_v1 import (
     iter_json_lines,
     normalize_text,
     resolve_sources,
+    resolve_sources_from_args,
 )
 
 
@@ -26,6 +27,32 @@ def test_resolve_sources_returns_expected_specs() -> None:
     sources = resolve_sources("fineweb_edu,skypile_zh")
     assert [source.name for source in sources] == ["fineweb_edu", "skypile_zh"]
     assert sources[0] == SOURCES["fineweb_edu"]
+
+
+def test_resolve_sources_supports_new_english_sources() -> None:
+    sources = resolve_sources("fineweb_edu,fineweb2_en")
+    assert [source.name for source in sources] == ["fineweb_edu", "fineweb2_en"]
+    assert sources[1] == SOURCES["fineweb2_en"]
+
+
+def test_resolve_sources_supports_falcon_refinedweb() -> None:
+    sources = resolve_sources("fineweb_edu,falcon_refinedweb_en")
+    assert [source.name for source in sources] == ["fineweb_edu", "falcon_refinedweb_en"]
+    assert sources[1] == SOURCES["falcon_refinedweb_en"]
+
+
+def test_resolve_sources_from_args_uses_stage_preset() -> None:
+    sources = resolve_sources_from_args(preset="english_boost", raw_sources="skypile_zh")
+    assert [source.name for source in sources] == ["fineweb_edu", "fineweb2_en"]
+
+
+def test_resolve_sources_from_args_supports_mirror_preset() -> None:
+    sources = resolve_sources_from_args(preset="english_boost_mirror", raw_sources="skypile_zh")
+    assert [source.name for source in sources] == [
+        "fineweb_edu",
+        "fineweb2_en",
+        "falcon_refinedweb_en",
+    ]
 
 
 def test_normalize_text_preserves_newlines_but_cleans_control_chars() -> None:

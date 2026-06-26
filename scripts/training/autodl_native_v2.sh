@@ -128,8 +128,9 @@ download_data() {
         return 0
     fi
 
-    echo "从 HuggingFace 下载预训练数据 (4 个数据源，每源 $MAX_RECORDS_PER_SOURCE 条)..."
-    echo "数据源: fineweb_edu, skypile_zh, openwebmath, codeparrot_code"
+    echo "从 HuggingFace 下载预训练数据 (默认 mix，每源 $MAX_RECORDS_PER_SOURCE 条)..."
+    echo "默认数据源: fineweb_edu, fineweb2_en, skypile_zh, openwebmath, codeparrot_code"
+    echo "如果 fineweb2_en 体积或网络压力太大，可先跑 stage0，再单独补英文 shard"
     echo ""
 
     python scripts/data_prep/download_pretrain_mix_v1.py \

@@ -1,6 +1,6 @@
 <template>
   <section class="dedicated-view">
-    <div class="view-header"><h2><SettingsIcon :size="24" /> {{ t('sys_settings') }}</h2></div>
+    <div class="view-header"><h2>{{ t('sys_settings') }}</h2></div>
     <div class="view-body">
       <!-- UI Theme -->
       <div class="panel-section">

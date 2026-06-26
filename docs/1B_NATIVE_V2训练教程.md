@@ -4,7 +4,7 @@
 
 1. 重建文本词表
 2. 从零预训练 1B
-3. 再做 SFT / Agent 微调
+3. 再做多模态对齐 / SFT / Agent 微调
 
 这份教程默认你已经接受一个关键前提：
 
@@ -76,6 +76,14 @@
 
 它还不等于最终完整版 1B 语料池，后续还需要继续扩 shard。
 
+另外要特别说明：
+
+- 当前仓库里的英文 base pretrain 规划已经切到 `fineweb2_en`
+- 但你本地这次审计到的 `pretrain_mix_v1` 还没有把 `fineweb2_en.jsonl` 真正下载落地
+- 所以现在的英文 token 统计，仍然主要来自 `fineweb_edu`
+
+这也是为什么当前 1B 缺口里，英文仍然是最需要优先补的部分之一。
+
 ## 4. 如何继续下载更多预训练数据
 
 使用新脚本：
@@ -104,10 +112,31 @@ python scripts/data_prep/download_pretrain_mix_v1.py --sources fineweb_edu --nor
 当前内置源：
 
 - `fineweb_edu`
+- `fineweb2_en`
 - `fineweb2_zh`
 - `skypile_zh`
 - `openwebmath`
 - `codeparrot_code`
+
+更建议的下载节奏不是“一次全梭”，而是按阶段补：
+
+1. `stage0 / tokenizer + smoke`
+   - `fineweb_edu`
+   - `skypile_zh`
+   - `openwebmath`
+   - `codeparrot_code`
+2. `stage1 / 英文补强`
+   - `fineweb2_en`
+3. `stage1 / 中文补强`
+   - `fineweb2_zh`
+   - `skypile_zh` 更多 shard
+
+示例：
+
+```bash
+python scripts/data_prep/download_pretrain_mix_v1.py --sources fineweb2_en --dry-run
+python scripts/data_prep/download_pretrain_mix_v1.py --sources fineweb2_en --shards-per-source 1
+```
 
 ## 5. 重建 tokenizer
 
@@ -213,13 +242,42 @@ python scripts/native_v2/pretrain.py ^
 
 如果你是多卡 AutoDL，当前仓库还缺一个干净的 native-v2 多卡训练入口，这点见后面的“已知问题”。
 
-## 8. 预训练结束后做什么
+## 8. 多模态应该怎么接
+
+你之前提醒得对，态极不能只盯中文文本。
+
+但多模态也不应该直接混进当前这批 1B base pretrain 主流程。更稳的方式是分两段：
+
+1. `1B base pretrain`
+   - 中文
+   - 英文
+   - 代码
+   - 数学
+2. `1B multimodal alignment`
+   - 图文对齐
+   - 音文对齐
+   - 多模态指令微调
+
+原因很简单：
+
+- 你现在本地多模态标注只有 `100` 对
+- 这远远不够把多模态训练混入基座阶段
+- 强行混训，只会让文本基座和多模态都学不好
+
+所以当前最合理的策略是：
+
+1. 先把文本基座做强
+2. 多模态单独做第二阶段
+3. 最后再做统一 assistant / agent 行为微调
+
+## 9. 预训练结束后做什么
 
 顺序建议：
 
 1. 先做基础续训检查
-2. 再做 SFT
-3. 最后做 Agent / 工具调用微调
+2. 再做多模态对齐
+3. 再做 SFT
+4. 最后做 Agent / 工具调用微调
 
 不要一上来就把预训练模型直接拿去做复杂 agent 微调。
 
@@ -227,16 +285,17 @@ python scripts/native_v2/pretrain.py ^
 
 1. `pretrain_stage1`
 2. `pretrain_stage2`（扩更多 shard）
-3. `conversation_sft`
-4. `agent_tool_sft`
+3. `multimodal_alignment`
+4. `conversation_sft`
+5. `agent_tool_sft`
 
-## 9. 当前已知问题
+## 10. 当前已知问题
 
 态极项目 **不是只卡在模型这一步**。
 
 模型是主卡点，但还有几类隐藏问题仍然在：
 
-### 9.1 训练入口分裂
+### 10.1 训练入口分裂
 
 - 旧入口 [taiji/train/autodl_pretrain.py](/E:/taiji/taiji/train/autodl_pretrain.py)
 - 新入口 [scripts/native_v2/pretrain.py](/E:/taiji/scripts/native_v2/pretrain.py)
@@ -244,11 +303,11 @@ python scripts/native_v2/pretrain.py ^
 这两个入口的 tokenizer 假设不同。  
 如果混着用，最容易出问题的是 token ID 空间和训练数据格式。
 
-### 9.2 旧文档仍然在指向 106 条 SFT 对话
+### 10.2 旧文档仍然在指向 106 条 SFT 对话
 
 [docs/autodl_training_guide.md](/E:/taiji/docs/autodl_training_guide.md) 现在还是旧思路，示例数据是 `sft_merged_clean.jsonl`，不适合作为正式 1B 预训练教程。
 
-### 9.3 native-v2 多卡训练链路还不完整
+### 10.3 native-v2 多卡训练链路还不完整
 
 当前 [scripts/native_v2/pretrain.py](/E:/taiji/scripts/native_v2/pretrain.py) 是单卡脚本。  
 如果你要高效跑 1B 长程训练，后面还需要补：
@@ -257,12 +316,12 @@ python scripts/native_v2/pretrain.py ^
 - resume/断点续训管理
 - 验证集 / perplexity 监控
 
-### 9.4 数据量仍然只是第一批
+### 10.4 数据量仍然只是第一批
 
 现在这批 `pretrain_mix_v1` 够启动、够练 tokenizer、够 smoke run，  
 但还不够你放心说“1B 已经吃饱了”。
 
-### 9.5 评估链路还不够产品化
+### 10.5 评估链路还不够产品化
 
 当前更像“能训练”，还不是“训练完能稳定知道它变好了多少”。
 
@@ -272,7 +331,7 @@ python scripts/native_v2/pretrain.py ^
 - 中文/代码/数学分开评测
 - native-v2 专项回归评测
 
-## 10. 我对当前状态的判断
+## 11. 我对当前状态的判断
 
 一句话版：
 
@@ -294,15 +353,16 @@ python scripts/native_v2/pretrain.py ^
 4. 评测
 5. 再微调
 
-## 11. 推荐下一步
+## 12. 推荐下一步
 
 最推荐的执行顺序：
 
-1. 扩 `pretrain_mix_v1` 第二批 shard
+1. 扩 `pretrain_mix_v1` 第二批英文与中文 shard
 2. 重练 native-v2 text tokenizer
 3. 跑 200 step smoke run
 4. 跑正式 `1B stage1`
-5. 补 native-v2 多卡训练入口
+5. 开始准备 `multimodal_alignment` 数据池
+6. 补 native-v2 多卡训练入口
 
 如果你继续让我往前做，最合适的下一步就是：
 

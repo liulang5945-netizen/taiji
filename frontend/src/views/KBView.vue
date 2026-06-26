@@ -1,6 +1,6 @@
 <template>
   <section class="dedicated-view">
-    <div class="view-header"><h2><BookOpen :size="24" /> {{ t('kb_management') }}</h2></div>
+    <div class="view-header"><h2>{{ t('kb_management') }}</h2></div>
     <div class="view-body">
       <!-- 上传队列 -->
       <n-card title="" size="small" :bordered="false" style="margin-bottom:16px;">

@@ -3,7 +3,6 @@
     <!-- 工具栏 -->
     <div class="ide-toolbar">
       <div class="toolbar-left">
-        <Laptop :size="15" />
         <span class="toolbar-title">工作台</span>
         <span class="toolbar-path" v-if="workspacePath">{{ workspacePath }}</span>
         <button class="tb-btn" @click="openFolderPicker" title="切换路径"><FolderOpen :size="13" /></button>
@@ -99,7 +98,7 @@
 import { ref, reactive, onMounted, onUnmounted, inject } from 'vue';
 import { useApi } from '../composables/useApi.js';
 import { API_BASE, authFetch } from '../composables/apiClient.js';
-import { Laptop, RefreshCw, FilePlus, FolderPlus, Terminal, FolderOpen, Folder, FileCode, FileText, Image as ImageIcon, Database, Edit3, Edit2, Trash2 } from 'lucide-vue-next';
+import { RefreshCw, FilePlus, FolderPlus, Terminal, FolderOpen, Folder, FileCode, FileText, Image as ImageIcon, Database, Edit3, Edit2, Trash2 } from 'lucide-vue-next';
 import MonacoEditor from '../components/MonacoEditor.vue';
 import WebTerminal from '../components/WebTerminal.vue';
 

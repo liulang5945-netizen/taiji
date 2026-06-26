@@ -935,7 +935,7 @@ export function drawLossChart() {
     const y = pad.top + ((maxL - data[i].loss) / range) * ph;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
-  ctx.strokeStyle = '#6366f1';
+  ctx.strokeStyle = '#1a1a1a';
   ctx.lineWidth = 2;
   ctx.lineJoin = 'round';
   ctx.stroke();
@@ -945,7 +945,7 @@ export function drawLossChart() {
     const y = pad.top + ((maxL - data[i].loss) / range) * ph;
     ctx.beginPath();
     ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#6366f1';
+    ctx.fillStyle = '#1a1a1a';
     ctx.fill();
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.5;

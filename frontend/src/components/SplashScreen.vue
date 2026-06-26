@@ -4,7 +4,7 @@
       <div class="splash-bg"></div>
       <div class="splash-content">
         <div class="splash-logo">
-          <Brain :size="36" />
+          <img src="/logo.svg?v=ink-20260624-8" alt="态极" />
         </div>
         <h1 class="splash-title">态 极</h1>
         <p class="splash-status">{{ statusText }}</p>
@@ -15,7 +15,6 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Brain } from 'lucide-vue-next'
 import { useRuntimeStore } from '@/stores/runtimeStore.js'
 
 const runtimeStore = useRuntimeStore()
@@ -63,16 +62,13 @@ onUnmounted(() => {
 .splash-bg {
   position: absolute;
   inset: 0;
-  background: var(--bg-base, #1a1b26);
+  background:
+    radial-gradient(circle at 50% 32%, rgba(26,26,26,0.04), transparent 32%),
+    var(--bg-base);
 }
 
 .splash-bg::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 30% 40%, rgba(124,138,255,0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 60%, rgba(167,139,250,0.04) 0%, transparent 50%);
+  display: none;
 }
 
 .splash-content {
@@ -80,54 +76,55 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  animation: contentIn 0.6s var(--ease, cubic-bezier(0.16, 1, 0.3, 1));
-}
-
-@keyframes contentIn {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  gap: 14px;
+  animation: contentIn 0.6s var(--ease);
 }
 
 /* Logo */
 .splash-logo {
-  width: 64px;
-  height: 64px;
+  width: 82px;
+  height: 82px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
-  background: var(--primary-gradient, linear-gradient(135deg, #7c8aff, #a78bfa));
-  color: white;
-  box-shadow: 0 8px 32px rgba(124,138,255,0.25);
-  animation: breathe 3s ease-in-out infinite;
+  border-radius: 28px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-md);
 }
 
-@keyframes breathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 8px 32px rgba(124,138,255,0.25); }
-  50% { transform: scale(1.03); box-shadow: 0 12px 40px rgba(124,138,255,0.35); }
+.splash-logo img {
+  width: 64px;
+  height: 64px;
 }
 
 /* 标题 */
 .splash-title {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  color: var(--text, #c8cedd);
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  color: var(--text);
 }
 
 /* 状态文字 */
 .splash-status {
   margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-muted, #565c74);
-  letter-spacing: 0.02em;
+  min-height: 18px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0;
 }
 
-/* 淡出 */
+/* 淡出 — 与整体动画系统一致 */
 .splash-fade-leave-active {
-  transition: opacity 0.4s ease;
+  transition: opacity 0.4s var(--ease);
 }
 .splash-fade-leave-to {
   opacity: 0;

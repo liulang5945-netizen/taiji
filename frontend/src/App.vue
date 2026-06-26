@@ -11,7 +11,11 @@
               <RuntimeExceptionCenter />
 
               <!-- === Sidebar === -->
-              <AppSidebar />
+              <AppSidebar 
+                :width="sidebarWidth" 
+                :is-resizing="isResizing"
+                @resize-start="onSidebarResizeStart" 
+              />
 
               <!-- === Router View === -->
               <div class="router-wrapper">
@@ -32,9 +36,9 @@
                 @dragleave="onDragLeave"
                 @drop.prevent.stop="onDrop"
               >
-                <div style="text-align:center;color:white;">
-                  <div style="font-size:3rem;margin-bottom:12px;">📥</div>
-                  <p style="font-size:1.2rem;color:rgba(255,255,255,0.9);">{{ appStore.t('drop_release') }}</p>
+                <div class="drag-overlay-panel">
+                  <UploadCloud :size="36" />
+                  <p>{{ appStore.t('drop_release') }}</p>
                 </div>
               </div>
             </div>
@@ -54,6 +58,7 @@ import RuntimeExceptionCenter from './components/RuntimeExceptionCenter.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import RouteErrorView from './components/RouteErrorView.vue'
 import SplashScreen from './components/SplashScreen.vue'
+import { UploadCloud } from 'lucide-vue-next'
 import { useAppStore } from './stores/appStore.js'
 import { useChatStore } from './stores/chatStore.js'
 import { useApi } from './composables/useApi.js'
@@ -71,29 +76,29 @@ const naiveTheme = computed(() => {
 })
 
 const themeOverrides = computed(() => {
-  const accent = appStore.currentAccent || '#1d93ab'
+  const accent = appStore.currentAccent || '#1a1a1a'
   return {
     common: {
       primaryColor: accent,
       primaryColorHover: accent + 'cc',
       primaryColorPressed: accent + 'aa',
       primaryColorSuppl: accent + '88',
-      borderRadius: '10px',
-      borderRadiusSmall: '6px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
+      borderRadius: '12px',
+      borderRadiusSmall: '8px',
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif',
     },
     Button: {
-      borderRadiusMedium: '10px',
-      borderRadiusSmall: '6px',
+      borderRadiusMedium: '12px',
+      borderRadiusSmall: '8px',
     },
     Input: {
-      borderRadius: '10px',
+      borderRadius: '12px',
     },
     Card: {
-      borderRadius: '16px',
+      borderRadius: '20px',
     },
     Dialog: {
-      borderRadius: '16px',
+      borderRadius: '20px',
     },
     Notification: {
       borderRadius: '12px',
@@ -111,6 +116,41 @@ provide('$confirm', $confirm)
 
 // API connection
 const { startHealthCheck, stopHealthCheck } = useApi()
+
+// 侧边栏宽度调整
+const sidebarWidth = ref(parseInt(localStorage.getItem('taiji_sidebar_width') || '260'))
+const isResizing = ref(false)
+
+function onSidebarResizeStart(event) {
+  event.preventDefault()
+  isResizing.value = true
+  const startX = event.clientX
+  const startWidth = sidebarWidth.value
+  
+  function onMouseMove(e) {
+    const newWidth = Math.min(400, Math.max(200, startWidth + (e.clientX - startX)))
+    sidebarWidth.value = newWidth
+    document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px')
+  }
+  
+  function onMouseUp() {
+    isResizing.value = false
+    localStorage.setItem('taiji_sidebar_width', sidebarWidth.value.toString())
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+  
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+// 恢复侧边栏宽度
+onMounted(() => {
+  const savedWidth = localStorage.getItem('taiji_sidebar_width')
+  if (savedWidth) {
+    document.documentElement.style.setProperty('--sidebar-width', savedWidth + 'px')
+  }
+})
 
 function onRouteError(error) {
   routeError.value = error?.message || '页面加载失败'
@@ -217,4 +257,31 @@ function onGlobalKeyup(event) {
   if (event.key === 'Escape') clearDragState()
 }
 </script>
-<style>@import './assets/styles/index.css';</style>
+
+<style>
+@import './assets/styles/index.css';
+
+.drag-overlay-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text);
+}
+
+.drag-overlay-panel p {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+/* 深色主题覆盖 */
+.theme-dark .drag-overlay-panel {
+  color: #e0e0e0;
+}
+
+.theme-dark .drag-overlay-panel p {
+  color: #e0e0e0;
+}
+</style>

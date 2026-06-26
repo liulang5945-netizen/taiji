@@ -14,7 +14,7 @@
       <div class="taiji-avatar-section">
         <div class="avatar-ring" :class="{ active: runtimeStore.health.modelLoaded }">
           <div class="avatar-inner">
-            <img src="/logo.svg" alt="态极" class="avatar-logo" />
+            <img src="/logo.svg?v=ink-20260624-8" alt="态极" class="avatar-logo" />
           </div>
         </div>
         <h2>态极</h2>
@@ -134,7 +134,7 @@
           玩耍
         </n-button>
         <n-button strong secondary type="warning" size="large" class="life-action-btn" @click="trainTaiji" :disabled="actionLoading">
-          <template #icon><Brain :size="16" /></template>
+          <template #icon><Activity :size="16" /></template>
           训练
         </n-button>
       </div>
@@ -184,7 +184,7 @@ import { useRuntimeStore } from '@/stores/runtimeStore.js'
 import { API_BASE, authFetch } from '@/composables/apiClient.js'
 import {
   Heart, Footprints, Zap, Eye,
-  Apple, Moon, Gamepad2, Brain,
+  Apple, Moon, Gamepad2,
   Activity, Radio
 } from 'lucide-vue-next'
 
@@ -378,7 +378,6 @@ onUnmounted(() => {
 
 .avatar-ring.active {
   opacity: 1;
-  background: linear-gradient(135deg, var(--info) 0%, #0099cc 100%);
   box-shadow: var(--shadow-glow);
 }
 
@@ -444,9 +443,8 @@ onUnmounted(() => {
   margin-bottom: 32px;
   padding: 20px;
   background: var(--bg-card);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
-  backdrop-filter: blur(12px);
 }
 
 .needs-section h3 {
@@ -483,18 +481,17 @@ onUnmounted(() => {
 
 .need-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--success), #40c057);
+  background: var(--primary);
   border-radius: 4px;
   transition: width 0.5s ease;
 }
 
 .need-fill.critical {
-  background: linear-gradient(90deg, var(--danger), #ee5a24);
-  animation: bar-pulse 1s infinite;
+  background: var(--danger);
 }
 
 .need-fill.curiosity {
-  background: linear-gradient(90deg, var(--warning), #fab005);
+  background: var(--jade-light);
 }
 
 @keyframes bar-pulse {
@@ -523,15 +520,13 @@ onUnmounted(() => {
   gap: 16px;
   padding: 16px;
   background: var(--bg-card);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border);
-  backdrop-filter: blur(12px);
   transition: var(--transition);
 }
 
 .status-card:hover {
-  border-color: var(--primary);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--primary-light);
 }
 
 .status-icon {
@@ -661,14 +656,13 @@ onUnmounted(() => {
   gap: 12px;
   padding: 10px 14px;
   background: var(--bg-card);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border-left: 3px solid var(--border);
   animation: slide-in 0.3s ease;
-  backdrop-filter: blur(8px);
 }
 
 .log-feed { border-left-color: var(--danger); }
-.log-sleep { border-left-color: var(--purple); }
+.log-sleep { border-left-color: var(--jade-dark); }
 .log-play { border-left-color: var(--success); }
 .log-train { border-left-color: var(--warning); }
 

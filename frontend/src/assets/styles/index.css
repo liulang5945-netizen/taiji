@@ -21,3 +21,6 @@
 
 /* [FROZEN] 主题覆盖层，不再新增规则 */
 @import './overrides.css';
+
+/* 产品化工作台覆盖层 */
+@import './product.css';

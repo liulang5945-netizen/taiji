@@ -1,7 +1,7 @@
 <template>
   <section class="dedicated-view">
     <div class="view-header">
-      <h2><Brain :size="24" /> 模型训练</h2>
+      <h2>模型训练</h2>
       <n-tag v-if="taijiModelInfo.size" type="info" size="small">
         {{ taijiModelInfo.size }} · {{ taijiModelInfo.config?.num_hidden_layers }}层 · {{ taijiModelInfo.config?.hidden_size }}维
       </n-tag>
@@ -67,7 +67,7 @@
 
       <!-- 训练参数 -->
       <n-card size="small" :bordered="false" style="margin-bottom:16px;">
-        <template #header><div style="display:flex;align-items:center;gap:8px;"><Brain :size="18" style="color:var(--primary);" /> 态极训练参数</div></template>
+        <template #header><div style="display:flex;align-items:center;gap:8px;">态极训练参数</div></template>
         <n-grid :cols="3" :x-gap="12" :y-gap="12">
           <n-gi><n-form-item label="Epochs"><n-input-number v-model:value="taijiTrainParams.num_epochs" :min="1" :max="100" /></n-form-item></n-gi>
           <n-gi><n-form-item label="Batch Size"><n-input-number v-model:value="taijiTrainParams.batch_size" :min="1" :max="32" /></n-form-item></n-gi>
@@ -154,7 +154,7 @@
 </template>
 
 <script setup>
-import { Monitor, Clock, Hourglass, Activity, Zap, BookOpen, GraduationCap, Trash2, Upload, Package as PackageIcon, RefreshCw, Gamepad2, Play, Pause, Square, StopCircle, TrendingUp, FileText as FileTextIcon, Brain } from 'lucide-vue-next';
+import { Monitor, Clock, Hourglass, Activity, Zap, BookOpen, GraduationCap, Trash2, Upload, Package as PackageIcon, RefreshCw, Gamepad2, Play, Pause, Square, StopCircle, TrendingUp, FileText as FileTextIcon } from 'lucide-vue-next';
 
 import { inject, watch, nextTick } from 'vue';
 import FileUploadQueue from '../components/FileUploadQueue.vue';

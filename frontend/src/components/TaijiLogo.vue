@@ -1,54 +1,144 @@
 <template>
-  <svg :width="size" :height="size" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    :width="size"
+    :height="size"
+    viewBox="0 0 128 128"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    role="img"
+    aria-label="态极"
+    class="taiji-logo"
+    :class="{ 'is-thinking': thinking, 'is-idle': !thinking }"
+  >
     <defs>
-      <linearGradient :id="gradientId" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" :stop-color="colors[0]"/>
-        <stop offset="100%" :stop-color="colors[1]"/>
-      </linearGradient>
+      <filter id="ink" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" seed="5" result="noise"/>
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5"/>
+      </filter>
     </defs>
-    <!-- 外圆环 -->
-    <circle cx="64" cy="64" r="58" :stroke="`url(#${gradientId})`" stroke-width="2.5" fill="none" opacity="0.3"/>
-    <!-- 太极主体轮廓 -->
-    <path d="M64 6 C97.1 6 124 32.9 124 66 C124 82.5 117.3 97.4 106.3 108.3 C97.4 117.3 82.5 124 66 124 C32.9 124 6 97.1 6 64 C6 47.5 12.7 32.6 23.7 21.7"
-      :stroke="`url(#${gradientId})`" stroke-width="2.5" fill="none"/>
-    <!-- S 曲线 -->
-    <path d="M64 6 C64 35.5 39.5 60 39.5 89.5 C39.5 106.3 53.7 120 64 124"
-      :stroke="`url(#${gradientId})`" stroke-width="2.5" fill="none"/>
-    <path d="M64 124 C64 94.5 88.5 70 88.5 40.5 C88.5 23.7 74.3 10 64 6"
-      :stroke="`url(#${gradientId})`" stroke-width="2.5" fill="none"/>
-    <!-- 阳区域 -->
-    <path d="M64 6 C97.1 6 124 32.9 124 66 C124 82.5 117.3 97.4 106.3 108.3 C97.4 117.3 82.5 124 66 124 C53.7 120 39.5 106.3 39.5 89.5 C39.5 60 64 35.5 64 6Z"
-      :fill="`url(#${gradientId})`" opacity="0.12"/>
+
+    <!-- 外环 -->
+    <circle cx="64" cy="64" r="60" stroke="#1a1a1a" stroke-width="2" fill="none" opacity="0.15" filter="url(#ink)"/>
+    <circle cx="64" cy="64" r="56" stroke="#1a1a1a" stroke-width="0.5" fill="none" opacity="0.08"/>
+
+    <!-- 太极主体 -->
+    <g filter="url(#ink)" class="taiji-body">
+      <!-- 阳 (白色) -->
+      <path d="M64 4 A60 60 0 0 1 64 124 A30 30 0 0 1 64 64 A30 30 0 0 0 64 4 Z" 
+        fill="#f5f5f0" opacity="0.9"/>
+      
+      <!-- 阴 (黑色) -->
+      <path d="M64 124 A60 60 0 0 1 64 4 A30 30 0 0 1 64 64 A30 30 0 0 0 64 124 Z" 
+        fill="#1a1a1a" opacity="0.85"/>
+    </g>
+
+    <!-- S曲线 -->
+    <path d="M64 4 A60 60 0 0 1 64 124" stroke="#1a1a1a" stroke-width="2.5" fill="none" opacity="0.3" filter="url(#ink)"/>
+
     <!-- 阳眼 -->
-    <circle cx="64" cy="36" r="7" :fill="`url(#${gradientId})`"/>
+    <circle cx="64" cy="34" r="8" fill="#1a1a1a" opacity="0.9"/>
+    <circle cx="64" cy="34" r="4" fill="#f5f5f0" opacity="0.3" class="eye-pulse"/>
+    
     <!-- 阴眼 -->
-    <circle cx="64" cy="92" r="7" :fill="bgColor" :stroke="`url(#${gradientId})`" stroke-width="1.5"/>
-    <!-- 中心连接线 -->
-    <line x1="64" y1="43" x2="64" y2="61" :stroke="`url(#${gradientId})`" stroke-width="0.8" opacity="0.25"/>
-    <line x1="64" y1="67" x2="64" y2="85" :stroke="`url(#${gradientId})`" stroke-width="0.8" opacity="0.25"/>
-    <circle cx="64" cy="64" r="2.5" :fill="`url(#${gradientId})`" opacity="0.5"/>
+    <circle cx="64" cy="94" r="8" fill="#f5f5f0" opacity="0.9"/>
+    <circle cx="64" cy="94" r="4" fill="#1a1a1a" opacity="0.3" class="eye-pulse"/>
+
+    <!-- 中心点 -->
+    <circle cx="64" cy="64" r="3" fill="#1a1a1a" opacity="0.5" class="center-pulse"/>
+
+    <!-- 流动光环 - 主要动态元素 -->
+    <circle cx="64" cy="64" r="52" fill="none" stroke="#1a1a1a" stroke-width="3" 
+      stroke-dasharray="20 10 5 10" opacity="0.5" class="flow-ring"/>
+    <circle cx="64" cy="64" r="48" fill="none" stroke="#4a4a4a" stroke-width="2" 
+      stroke-dasharray="15 8 3 8" opacity="0.3" class="flow-ring-reverse"/>
   </svg>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useAppStore } from '@/stores/appStore.js'
-
-const props = defineProps({
+defineProps({
   size: { type: [Number, String], default: 40 },
+  thinking: { type: Boolean, default: false },
 })
-
-const appStore = useAppStore()
-
-const gradientId = computed(() => 'taiji-grad-' + Math.random().toString(36).slice(2, 8))
-
-const colors = computed(() =>
-  appStore.currentTheme === 'light'
-    ? ['#4f46e5', '#7c3aed']
-    : ['#7c8aff', '#a78bfa']
-)
-
-const bgColor = computed(() =>
-  appStore.currentTheme === 'light' ? '#ffffff' : '#1a1b26'
-)
 </script>
+
+<style scoped>
+.taiji-logo {
+  flex-shrink: 0;
+}
+
+/* 流动光环 - 顺时针旋转 */
+.flow-ring {
+  animation: ring-spin 4s linear infinite;
+  transform-origin: 64px 64px;
+}
+
+/* 流动光环 - 逆时针旋转 */
+.flow-ring-reverse {
+  animation: ring-spin-reverse 6s linear infinite;
+  transform-origin: 64px 64px;
+}
+
+@keyframes ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ring-spin-reverse {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
+/* 鱼眼脉动 */
+.eye-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; r: 4; }
+  50% { opacity: 0.8; r: 5; }
+}
+
+/* 中心点脉动 */
+.center-pulse {
+  animation: center-glow 3s ease-in-out infinite;
+}
+
+@keyframes center-glow {
+  0%, 100% { opacity: 0.5; r: 3; }
+  50% { opacity: 1; r: 4; }
+}
+
+/* 整体呼吸 */
+.taiji-body {
+  animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}
+
+/* 思考时加速 */
+.taiji-logo.is-thinking .flow-ring {
+  animation-duration: 2s;
+}
+
+.taiji-logo.is-thinking .flow-ring-reverse {
+  animation-duration: 3s;
+}
+
+/* 空闲时减速 */
+.taiji-logo.is-idle .flow-ring {
+  animation-duration: 6s;
+}
+
+.taiji-logo.is-idle .flow-ring-reverse {
+  animation-duration: 8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-ring, .flow-ring-reverse, .eye-pulse, .center-pulse, .taiji-body {
+    animation: none;
+  }
+}
+</style>

@@ -1,0 +1,93 @@
+/**
+ * 态极 — 产品化覆盖层 v7「墨」
+ * 水墨美学深化，追求留白与呼吸感
+ * 黑白水墨风格
+ */
+
+/* === 全局覆盖 === */
+.app-wrapper {
+  background: var(--bg);
+}
+
+/* 杀掉旧版伪元素装饰（保留环境光） */
+.sidebar::before,
+.chat-topbar::after,
+.composer-area::before,
+.sidebar-header::after,
+.new-chat-btn::before {
+  display: none !important;
+}
+
+/* === 侧边栏 === */
+.sidebar {
+  background: var(--sidebar-bg) !important;
+  border-right: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* === 主内容区 === */
+.router-wrapper,
+.main-content {
+  background: var(--bg) !important;
+  border-left: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.dedicated-view { background: var(--bg); }
+.view-header { border-bottom: 1px solid var(--border); }
+
+/* 杀掉渐变文字 */
+.view-header h2,
+.sidebar-logo h2 {
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  letter-spacing: 0;
+}
+
+/* === 圆角统一 (强制应用) === */
+.n-card, .panel-section, .tool-card, .status-card,
+.train-metric-card, .needs-section, .reasoning-content,
+.session-item, .settings-btn, .new-chat-btn, .runtime-card,
+.hint-card, .bubble, .message-avatar, .runtime-notice,
+.log-entry, .need-item, .life-state-chip, .action-result,
+.dominant-need, .stat-item, .life-stats, .status-card,
+.avatar-ring, .life-status-view .view-header,
+.life-status-view .needs-section,
+.life-status-view .status-grid,
+.life-status-view .action-buttons,
+.life-status-view .life-stats,
+.life-status-view .activity-log {
+  border-radius: var(--radius-xl) !important;
+}
+
+/* 按钮和输入框 */
+.n-button, .n-input, .n-select, .n-tag,
+.send-btn, .stop-btn, .mm-btn, .icon-btn, .msg-action-btn,
+.input-container, .engine-pill, .life-chip, .metric-chip {
+  border-radius: var(--radius-lg) !important;
+}
+
+/* 小元素 */
+.n-button .n-button__content, .n-input .n-input__border,
+.n-select .n-base-selection .n-base-selection-border,
+.n-tag .n-tag__content {
+  border-radius: var(--radius-md) !important;
+}
+
+/* === 拖拽覆盖 === */
+.global-drag-overlay {
+  background: rgba(245,245,240,0.90) !important;
+  border: 1px dashed var(--primary) !important;
+}
+
+/* === Reduced Motion === */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

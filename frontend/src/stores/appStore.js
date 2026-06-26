@@ -20,7 +20,7 @@ function _debouncedSaveUI(data) {
 
 export const useAppStore = defineStore('app', () => {
   // === State ===
-  const currentTheme = ref(localStorage.getItem('taiji_theme') || 'dark')
+  const currentTheme = ref(localStorage.getItem('taiji_theme') || 'light')
   const currentAccent = ref(localStorage.getItem('taiji_accent') || '')
   const currentBgImage = ref(localStorage.getItem('taiji_bg_image') || '')
   const currentLang = ref('zh')
@@ -80,16 +80,16 @@ export const useAppStore = defineStore('app', () => {
     modelLoaded.value = loaded
   }
 
-  // 预设主题色
+  // 预设主题色 (水墨风格)
   const accentPresets = [
-    { name: '默认灰蓝', color: '#5b7a8a' },
-    { name: '靛蓝', color: '#4f46e5' },
-    { name: '翠绿', color: '#059669' },
-    { name: '琥珀', color: '#d97706' },
-    { name: '玫瑰', color: '#e11d48' },
-    { name: '紫色', color: '#7c3aed' },
-    { name: '青色', color: '#0891b2' },
-    { name: '石墨', color: '#475569' },
+    { name: '墨黑', color: '#1a1a1a' },
+    { name: '深灰', color: '#4a4a4a' },
+    { name: '中灰', color: '#8a8a8a' },
+    { name: '浅灰', color: '#b0b0b0' },
+    { name: '朱砂', color: '#8a3a2a' },
+    { name: '靛蓝', color: '#2a4a6a' },
+    { name: '青瓷', color: '#4a6a5a' },
+    { name: '琥珀', color: '#6a5a3a' },
   ]
 
   function applyTheme() {

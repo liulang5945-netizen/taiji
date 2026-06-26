@@ -2,6 +2,7 @@
 
 > 本文档适用于 **native-v2 训练路线**，替代旧的 `autodl_training_guide.md`。
 > 推荐配合 `scripts/training/autodl_native_v2.sh` 一键脚本使用。
+> 如果你使用的是 `RTX 4090D 24G x1` 的租机环境，建议同时阅读 [AUTODL_4090D_1B_FULL_RUNBOOK_CN.md](/E:/taiji/docs/AUTODL_4090D_1B_FULL_RUNBOOK_CN.md)。
 
 ## 📋 环境要求
 
@@ -96,11 +97,37 @@ python scripts/data_prep/download_pretrain_mix_v1.py \
     --max-records-per-source 100000
 ```
 
-数据源：
+如果你是 `RTX 4090D 24G x1`，更推荐按预设分阶段补数据：
+
+```bash
+# stage0：先做 tokenizer + smoke run
+python scripts/data_prep/download_pretrain_mix_v1.py --preset stage0_smoke --max-records-per-source 100000
+
+# 英文补强
+python scripts/data_prep/download_pretrain_mix_v1.py --preset english_boost --shards-per-source 1
+
+# 如果平台更依赖镜像，可用镜像友好版英文补强
+python scripts/data_prep/download_pretrain_mix_v1.py --preset english_boost_mirror --shards-per-source 1
+
+# 中文补强
+python scripts/data_prep/download_pretrain_mix_v1.py --preset chinese_boost --shards-per-source 1
+```
+
+默认数据源：
 - `fineweb_edu` — 英文高质量教育网页
+- `fineweb2_en` — 更现代的英文网页主料
+- `falcon_refinedweb_en` — 更镜像友好的英文网页主料
 - `skypile_zh` — 中文网页语料
 - `openwebmath` — 数学语料
 - `codeparrot_code` — 代码语料
+
+说明：
+
+- 当前脚本已经支持 `fineweb2_en`
+- 当前脚本已经支持 `falcon_refinedweb_en`
+- 当前脚本已经支持 `--preset` 阶段化下载
+- 你的本地首批审计数据里还未必已经下载了 `fineweb2_en`
+- 因此建议在 smoke run 前先确认 `manifest.json` 和输出目录里的真实文件
 
 下载后数据保存在 `taiji_data/training_data/pretrain_mix_v1/`。
 
@@ -162,6 +189,22 @@ python scripts/native_v2/pretrain.py \
     --log_every 50 \
     --save_every 10000
 ```
+
+### 多模态不要在这里混训
+
+当前这份 `AUTODL` 指南只覆盖 `1B` 文本基座训练，不覆盖多模态混合训练。
+
+原因：
+
+- 本地多模态标注量明显不足
+- 当前最稳的路线是先训练文本基座，再做多模态对齐
+
+建议顺序：
+
+1. `base_pretrain`
+2. `multimodal_alignment`
+3. `conversation_sft`
+4. `agent_tool_sft`
 
 ---
 
@@ -330,7 +373,7 @@ tar -czf taiji_1b_stage1_final.tar.gz \
 |------|--------------------------------------|--------|
 | 训练入口 | `taiji/train/autodl_pretrain.py` | `scripts/native_v2/pretrain.py` |
 | Tokenizer | 使用旧词表 | 重新训练 native-v2 词表 |
-| 数据 | 106 条 SFT 对话 | 4 源预训练语料（10万+条）|
+| 数据 | 106 条 SFT 对话 | 英中代码数学混合预训练语料 |
 | 词表大小 | - | 256000 (text_offset=13388) |
 | 训练目标 | SFT 微调 | 从零预训练 1B |
 | 上下文长度 | 512 | 2048 |

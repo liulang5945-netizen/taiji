@@ -1,144 +1,148 @@
 /**
- * 态极 —— 设计变量系统 v3
- * 参考 VS Code Dark+ / Dracula / Cursor
- * 暖灰基调 + 清晰层级 + 柔和品牌色
+ * 态极 — 设计系统 v7「墨」
+ * Ink & Paper · 水墨美学
+ *
+ * 色彩哲学：黑白分明，水墨流动
+ * 追求水墨画的留白与呼吸感，用现代CSS技术表达东方美学
  */
 
 *, *::before, *::after { box-sizing: border-box; }
 
 :root {
-  /* 品牌色 */
-  --primary: #7c8aff;
-  --primary-hover: #9ba5ff;
-  --primary-light: rgba(124,138,255,0.12);
-  --primary-subtle: rgba(124,138,255,0.06);
-  --primary-gradient: linear-gradient(135deg, #7c8aff 0%, #a78bfa 100%);
+  /* ── 品牌色系 (黑白水墨) ── */
+  --primary: #1a1a1a;               /* 墨黑 */
+  --primary-hover: #2a2a2a;
+  --primary-light: rgba(26,26,26,0.15);
+  --primary-subtle: rgba(26,26,26,0.08);
+  --primary-gradient: linear-gradient(135deg, #1a1a1a 0%, #4a4a4a 100%);
+  
+  /* 墨色深浅变体 */
+  --ink-light: #4a4a4a;
+  --ink-dark: #0a0a0a;
+  --ink-muted: rgba(26,26,26,0.6);
 
-  /* 功能色 */
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --info: #67e8f9;
-  --purple: #a78bfa;
+  /* ── 功能色 (水墨风格) ── */
+  --success: #2a2a2a;               /* 成功: 深墨 */
+  --warning: #4a4a4a;               /* 警告: 中墨 */
+  --danger: #8a3a2a;                /* 错误: 朱砂红 */
+  --info: #5a5a5a;                  /* 信息: 灰墨 */
 
-  /* 功能色背景 */
-  --success-light: rgba(74,222,128,0.1);
-  --warning-light: rgba(251,191,36,0.1);
-  --danger-light: rgba(248,113,113,0.1);
-  --info-light: rgba(103,232,249,0.1);
+  /* ── 功能色背景 ── */
+  --success-light: rgba(42,42,42,0.10);
+  --warning-light: rgba(74,74,74,0.10);
+  --danger-light: rgba(138,58,42,0.10);
+  --info-light: rgba(90,90,90,0.10);
 
-  /* ── 背景层级（暖灰基调，从深到浅） ── */
-  --bg-base: #1a1b26;       /* 最底层 */
-  --bg: #1e1f2e;            /* 应用背景 */
-  --bg-surface: #24253a;    /* 面板/侧边栏 */
-  --bg-elevated: #2a2b42;   /* 卡片/弹出层 */
-  --bg-hover: rgba(124,138,255,0.08);
-  --bg-muted: rgba(124,138,255,0.04);
-  --bg-card: rgba(36,37,58,0.9);
-  --bg-input: rgba(26,27,38,0.8);
+  /* ── 背景层级（纸墨基调） ── */
+  --bg-base: #f5f5f0;              /* 最底层 — 宣纸 */
+  --bg: #f8f8f3;                   /* 应用背景 — 白纸 */
+  --bg-surface: #ffffff;           /* 面板/侧边栏 */
+  --bg-elevated: #ffffff;          /* 卡片/弹出层 */
+  --bg-hover: rgba(26,26,26,0.04);
+  --bg-muted: rgba(26,26,26,0.03);
+  --bg-card: #ffffff;
+  --bg-input: #fafaf5;
 
-  /* 编辑器专用背景 */
-  --editor-bg: #1e1f2e;
-  --terminal-bg: #171824;
-  --sidebar-bg: #212236;
-  --toolbar-bg: #24253a;
+  /* 编辑器专用 */
+  --editor-bg: #ffffff;
+  --terminal-bg: #1a1a1a;
+  --sidebar-bg: #f0f0eb;
+  --toolbar-bg: #ffffff;
 
-  /* 文字 */
-  --text: #c8cedd;
-  --text-secondary: #8b92a8;
-  --text-muted: #565c74;
+  /* ── 文字 ── */
+  --text: #1a1a1a;                 /* 墨黑 */
+  --text-secondary: #4a4a4a;
+  --text-muted: #8a8a8a;
 
-  /* 边框 — 明确但柔和 */
-  --border: rgba(255,255,255,0.08);
-  --border-strong: rgba(255,255,255,0.14);
-  --border-subtle: rgba(255,255,255,0.04);
+  /* ── 边框 ── */
+  --border: rgba(26,26,26,0.12);
+  --border-strong: rgba(26,26,26,0.20);
+  --border-subtle: rgba(26,26,26,0.06);
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.35);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-xl: 0 16px 40px rgba(0,0,0,0.5);
-  --shadow-glow: 0 0 20px rgba(124,138,255,0.15);
+  /* ── 阴影 ── */
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.08);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.16);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.20);
+  --shadow-glow: 0 0 0 2px rgba(26,26,26,0.10);
 
-  /* 玻璃 */
-  --glass-bg: rgba(30,31,46,0.8);
-  --glass-bg-thick: rgba(30,31,46,0.95);
-  --glass-border: rgba(255,255,255,0.06);
-  --glass-blur: blur(16px);
-
-  /* 圆角 */
+  /* ── 圆角 ── */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  /* 布局尺寸 */
-  --sidebar-width: clamp(230px, 19vw, 270px);
-  --sidebar-min-width: 210px;
+  /* ── 玻璃变量 (兼容旧版) ── */
+  --glass-bg: rgba(255,255,255,0.85);
+  --glass-bg-thick: rgba(255,255,255,0.92);
+  --glass-border: rgba(26,26,26,0.12);
+
+  /* ── 布局尺寸 ── */
+  --sidebar-width: clamp(240px, 18vw, 272px);
+  --sidebar-min-width: 200px;
   --toolbar-height: 40px;
   --input-height: 38px;
   --panel-min-width: 340px;
 
-  /* 过渡 */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --transition: all 0.2s var(--ease);
-  --transition-fast: all 0.12s var(--ease);
-  --transition-slow: all 0.4s var(--ease);
+  /* ── 过渡 — 逐属性声明，不用 all ── */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition: color 0.2s var(--ease), background-color 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), opacity 0.2s var(--ease), transform 0.2s var(--ease);
+  --transition-fast: color 0.12s var(--ease), background-color 0.12s var(--ease), border-color 0.12s var(--ease), opacity 0.12s var(--ease);
+  --transition-slow: color 0.4s var(--ease), background-color 0.4s var(--ease), opacity 0.4s var(--ease);
 
-  /* 字体 */
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* ── 字体 — 东方韵味的选择 ── */
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Noto Serif SC", "Source Han Serif SC", "SimSun", Georgia, serif;
   --font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
 }
 
-/* ===== 浅色主题 ===== */
-.theme-light {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: rgba(79,70,229,0.1);
-  --primary-subtle: rgba(79,70,229,0.05);
-  --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+/* ===== 深色主题 (墨纸反转) ===== */
+.theme-dark {
+  --primary: #e0e0e0;
+  --primary-hover: #f0f0f0;
+  --primary-light: rgba(224,224,224,0.15);
+  --primary-subtle: rgba(224,224,224,0.08);
+  --primary-gradient: linear-gradient(135deg, #e0e0e0 0%, #b0b0b0 100%);
+  
+  --ink-light: #b0b0b0;
+  --ink-dark: #f0f0f0;
+  --ink-muted: rgba(224,224,224,0.6);
 
-  --success: #16a34a;
-  --warning: #d97706;
-  --danger: #dc2626;
-  --info: #0891b2;
+  --success: #e0e0e0;
+  --warning: #b0b0b0;
+  --danger: #c05040;
+  --info: #a0a0a0;
 
-  /* 背景层级（浅色） */
-  --bg-base: #f0f1f5;
-  --bg: #f5f6fa;
-  --bg-surface: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-hover: rgba(79,70,229,0.06);
-  --bg-muted: rgba(79,70,229,0.03);
-  --bg-card: rgba(255,255,255,0.95);
-  --bg-input: rgba(255,255,255,0.98);
+  --bg-base: #0a0a0a;
+  --bg: #111111;
+  --bg-surface: #1a1a1a;
+  --bg-elevated: #222222;
+  --bg-hover: rgba(224,224,224,0.06);
+  --bg-muted: rgba(224,224,224,0.04);
+  --bg-card: #1e1e1e;
+  --bg-input: #161616;
 
-  --editor-bg: #ffffff;
-  --terminal-bg: #1e1e1e;
-  --sidebar-bg: #f8f9fb;
-  --toolbar-bg: #ffffff;
+  --editor-bg: #111111;
+  --terminal-bg: #0a0a0a;
+  --sidebar-bg: #161616;
+  --toolbar-bg: #1a1a1a;
 
-  --text: #1e293b;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text: #e0e0e0;
+  --text-secondary: #b0b0b0;
+  --text-muted: #808080;
 
-  --border: rgba(15,23,42,0.1);
-  --border-strong: rgba(15,23,42,0.18);
-  --border-subtle: rgba(15,23,42,0.05);
+  --border: rgba(224,224,224,0.12);
+  --border-strong: rgba(224,224,224,0.20);
+  --border-subtle: rgba(224,224,224,0.06);
 
-  --shadow-sm: 0 1px 3px rgba(15,23,42,0.06);
-  --shadow-md: 0 4px 12px rgba(15,23,42,0.08);
-  --shadow-lg: 0 8px 24px rgba(15,23,42,0.1);
-  --shadow-xl: 0 16px 40px rgba(15,23,42,0.12);
-  --shadow-glow: 0 0 16px rgba(79,70,229,0.12);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.25);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.30);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.35);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.40);
+  --shadow-glow: 0 0 0 2px rgba(224,224,224,0.10);
 
-  --glass-bg: rgba(255,255,255,0.75);
-  --glass-bg-thick: rgba(255,255,255,0.92);
-  --glass-border: rgba(15,23,42,0.08);
-
-  --success-light: rgba(22,163,74,0.08);
-  --warning-light: rgba(217,119,6,0.08);
-  --danger-light: rgba(220,38,38,0.08);
-  --info-light: rgba(8,145,178,0.08);
+  --glass-bg: rgba(17,17,17,0.85);
+  --glass-bg-thick: rgba(17,17,17,0.92);
+  --glass-border: rgba(224,224,224,0.12);
 }
