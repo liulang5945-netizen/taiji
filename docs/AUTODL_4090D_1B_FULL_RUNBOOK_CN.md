@@ -11,6 +11,8 @@
 
 目标不是“理论可行”，而是让你按这份文档直接上机，把态极的 `1B` 基座训练链路完整跑起来。
 
+如果你只想先快速开训，先看 [TRAIN_NOW_CHECKLIST_CN.md](/E:/taiji/docs/TRAIN_NOW_CHECKLIST_CN.md)。
+
 ---
 
 ## 1. 先说结论

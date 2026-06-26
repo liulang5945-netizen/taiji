@@ -43,6 +43,11 @@ TOKENIZER_DIR="taiji/tokenizer_native_v2"
 CORPUS_FILE="taiji_data/tokenizer/native_v2_corpus.txt"
 SMOKE_OUTPUT="taiji_data/taiji_pretrained_1b_smoke"
 TRAIN_OUTPUT="taiji_data/taiji_pretrained_1b_stage1"
+DATA_PRESET="${TAIJI_DATA_PRESET:-stage0_smoke}"
+DATA_MAX_RECORDS="${TAIJI_DATA_MAX_RECORDS:-100000}"
+DATA_SHARDS_PER_SOURCE="${TAIJI_DATA_SHARDS_PER_SOURCE:-1}"
+HF_MIRROR="${HF_ENDPOINT:-}"
+SKIP_TOKENIZER_REBUILD="${TAIJI_SKIP_TOKENIZER_REBUILD:-0}"
 
 # 训练参数 (适配 4090D 24G)
 BATCH_SIZE=1
@@ -76,6 +81,19 @@ print_banner() {
     echo ""
 }
 
+print_data_plan() {
+    echo "--- 数据计划 ---"
+    echo "preset=$DATA_PRESET"
+    echo "max_records_per_source=$DATA_MAX_RECORDS"
+    echo "shards_per_source=$DATA_SHARDS_PER_SOURCE"
+    if [ -n "$HF_MIRROR" ]; then
+        echo "HF_ENDPOINT=$HF_MIRROR"
+    else
+        echo "HF_ENDPOINT=<not set>"
+    fi
+    echo ""
+}
+
 check_gpu() {
     echo "--- GPU 信息 ---"
     nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader
@@ -105,8 +123,12 @@ setup_deps() {
     echo "安装训练核心依赖..."
     pip install sentencepiece huggingface_hub pyarrow tqdm numpy tensorboard -q
 
-    # 安装项目本身 (不安装依赖，避免装 PyQt6 等桌面依赖)
-    pip install --no-deps -e . -q
+    # 远端有时只有补丁文件，没有完整的 pyproject/setup.py，此时跳过 editable install。
+    if [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
+        pip install --no-deps -e . -q
+    else
+        echo "跳过 editable install: 当前目录缺少 pyproject.toml/setup.py"
+    fi
 
     echo "✅ 依赖安装完成"
     echo ""
@@ -119,27 +141,35 @@ setup_deps() {
 # ============================================================
 download_data() {
     print_banner "下载预训练数据"
+    print_data_plan()
 
-    if [ -d "$DATA_DIR" ] && [ "$(ls -A $DATA_DIR/*.jsonl 2>/dev/null | wc -l)" -ge 4 ]; then
-        echo "数据已存在，跳过下载。如需重新下载，请删除 $DATA_DIR"
-        echo ""
-        ls -lh $DATA_DIR/*.jsonl
-        echo ""
-        return 0
-    fi
-
-    echo "从 HuggingFace 下载预训练数据 (默认 mix，每源 $MAX_RECORDS_PER_SOURCE 条)..."
-    echo "默认数据源: fineweb_edu, fineweb2_en, skypile_zh, openwebmath, codeparrot_code"
-    echo "如果 fineweb2_en 体积或网络压力太大，可先跑 stage0，再单独补英文 shard"
+    echo "从 HuggingFace 下载预训练数据..."
+    echo "可通过环境变量覆盖:"
+    echo "  TAIJI_DATA_PRESET=english_boost_mirror"
+    echo "  TAIJI_DATA_MAX_RECORDS=100000"
+    echo "  TAIJI_DATA_SHARDS_PER_SOURCE=1"
+    echo ""
+    echo "说明: 此步骤会按当前 preset 补齐对应源；已存在的本地文件会尽量复用，不会因为已有 4 个 jsonl 就直接跳过。"
     echo ""
 
     python scripts/data_prep/download_pretrain_mix_v1.py \
-        --max-records-per-source "$MAX_RECORDS_PER_SOURCE"
+        --preset "$DATA_PRESET" \
+        --max-records-per-source "$DATA_MAX_RECORDS" \
+        --shards-per-source "$DATA_SHARDS_PER_SOURCE"
 
     echo ""
     echo "✅ 数据下载完成"
     echo ""
     ls -lh $DATA_DIR/*.jsonl
+    echo ""
+}
+
+audit_data() {
+    print_banner "审计当前训练资产"
+    print_data_plan()
+    python scripts/data_prep/audit_1b_training_assets.py
+    echo ""
+    echo "✅ 数据审计完成"
     echo ""
 }
 
@@ -149,10 +179,16 @@ download_data() {
 rebuild_tokenizer() {
     print_banner "重建 Native-V2 Tokenizer"
 
-    if [ -f "$TOKENIZER_DIR/sentencepiece.model" ] && [ -f "$TOKENIZER_DIR/tokenizer_contract.json" ]; then
-        echo "Tokenizer 已存在，跳过重建。如需重建，请删除 $TOKENIZER_DIR"
+    if [ -f "$TOKENIZER_DIR/sentencepiece.model" ] && [ -f "$TOKENIZER_DIR/tokenizer_contract.json" ] && [ "$SKIP_TOKENIZER_REBUILD" = "1" ]; then
+        echo "Tokenizer 已存在，按 TAIJI_SKIP_TOKENIZER_REBUILD=1 跳过重建"
         echo ""
         return 0
+    fi
+
+    if [ -f "$TOKENIZER_DIR/sentencepiece.model" ] && [ -f "$TOKENIZER_DIR/tokenizer_contract.json" ]; then
+        echo "检测到已有 tokenizer，本次仍会重建以匹配新的 1B 预训练语料。"
+        echo "如需保留现有 tokenizer，可设置 TAIJI_SKIP_TOKENIZER_REBUILD=1"
+        echo ""
     fi
 
     # 3.1 构建词表训练语料
@@ -302,6 +338,9 @@ case $STAGE in
     data)
         download_data
         ;;
+    audit)
+        audit_data
+        ;;
     tokenizer)
         rebuild_tokenizer
         ;;
@@ -336,10 +375,18 @@ case $STAGE in
         echo "阶段:"
         echo "  setup     - 仅安装依赖"
         echo "  data      - 仅下载预训练数据"
+        echo "  audit     - 审计当前训练资产"
         echo "  tokenizer - 仅重建 tokenizer"
         echo "  smoke     - 仅跑 smoke run (200 步验证)"
         echo "  train     - 仅跑正式 1B stage1 预训练"
         echo "  all       - 执行全部步骤 (默认)"
+        echo ""
+        echo "可选环境变量:"
+        echo "  TAIJI_DATA_PRESET=stage0_smoke|english_boost|english_boost_mirror|chinese_boost|base_mirror_safe|base_full_text"
+        echo "  TAIJI_DATA_MAX_RECORDS=100000"
+        echo "  TAIJI_DATA_SHARDS_PER_SOURCE=1"
+        echo "  TAIJI_SKIP_TOKENIZER_REBUILD=1"
+        echo "  HF_ENDPOINT=https://hf-mirror.com"
         echo ""
         exit 1
         ;;
