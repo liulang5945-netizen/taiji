@@ -128,48 +128,11 @@ def save_model(
     logger.info("Model saved to %s", save_path)
 
 
-def _config_to_dict(config: ModelConfig) -> dict[str, object]:
-    return {
-        "vocab_size": config.vocab_size,
-        "hidden_size": config.hidden_size,
-        "intermediate_size": config.intermediate_size,
-        "num_hidden_layers": config.num_hidden_layers,
-        "num_attention_heads": config.num_attention_heads,
-        "num_key_value_heads": config.num_key_value_heads,
-        "max_position_embeddings": config.max_position_embeddings,
-        "rms_norm_eps": config.rms_norm_eps,
-        "rope_theta": config.rope_theta,
-        "attention_bias": config.attention_bias,
-        "base_vocab_size": config.base_vocab_size,
-        "num_special_tokens": config.num_special_tokens,
-        "num_short_term_slots": config.num_short_term_slots,
-        "num_long_term_slots": config.num_long_term_slots,
-        "memory_dim": config.memory_dim,
-        "active_heads": config.active_heads,
-    }
+def _config_to_dict(config: ModelConfig) -> dict:
+    """Serialise ModelConfig using dataclass introspection — never drifts."""
+    return config.to_dict()
 
 
 def _dict_to_config(data: dict) -> ModelConfig:
-    return ModelConfig(
-        vocab_size=int(data.get("vocab_size", NATIVE_V2_TOKENIZER_CONTRACT["total_vocab_size"])),
-        hidden_size=int(data.get("hidden_size", 1024)),
-        intermediate_size=int(data.get("intermediate_size", 2816)),
-        num_hidden_layers=int(data.get("num_hidden_layers", 24)),
-        num_attention_heads=int(data.get("num_attention_heads", 16)),
-        num_key_value_heads=int(data.get("num_key_value_heads", 16)),
-        max_position_embeddings=int(data.get("max_position_embeddings", 2048)),
-        rms_norm_eps=float(data.get("rms_norm_eps", 1e-6)),
-        rope_theta=float(data.get("rope_theta", 1000000.0)),
-        attention_bias=bool(data.get("attention_bias", False)),
-        base_vocab_size=int(data.get("base_vocab_size", NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"])),
-        num_special_tokens=int(
-            data.get(
-                "num_special_tokens",
-                NATIVE_V2_TOKENIZER_CONTRACT["total_vocab_size"] - NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"],
-            )
-        ),
-        num_short_term_slots=int(data.get("num_short_term_slots", 20)),
-        num_long_term_slots=int(data.get("num_long_term_slots", 10)),
-        memory_dim=int(data.get("memory_dim", 64)),
-        active_heads=data.get("active_heads"),
-    )
+    """Deserialise ModelConfig from dict."""
+    return ModelConfig.from_dict(data)

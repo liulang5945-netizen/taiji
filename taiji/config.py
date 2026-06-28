@@ -235,6 +235,35 @@ class ModelConfig:
     num_long_term_slots: int = 10
     memory_dim: int = 64
 
+    def to_dict(self) -> dict:
+        """Serialise to dict — auto-generated from dataclass fields, never drifts."""
+        from dataclasses import asdict
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ModelConfig":
+        """Deserialise from dict with sensible defaults."""
+        defaults = {
+            "vocab_size": int(NATIVE_V2_TOKENIZER_CONTRACT["total_vocab_size"]),
+            "hidden_size": 1024,
+            "intermediate_size": 2816,
+            "num_hidden_layers": 24,
+            "num_attention_heads": 16,
+            "num_key_value_heads": 16,
+            "max_position_embeddings": 2048,
+            "rms_norm_eps": 1e-6,
+            "rope_theta": 1000000.0,
+            "attention_bias": False,
+            "base_vocab_size": int(NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"]),
+            "num_special_tokens": int(NATIVE_V2_TOKENIZER_CONTRACT["total_vocab_size"] - NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"]),
+            "num_short_term_slots": 20,
+            "num_long_term_slots": 10,
+            "memory_dim": 64,
+            "active_heads": None,
+        }
+        return cls(**{k: type(defaults.get(k, v))(v) if isinstance(defaults.get(k), (int, float, bool)) else v
+                      for k, v in {**defaults, **data}.items() if k in defaults})
+
     @classmethod
     def size_125m(cls) -> "ModelConfig":
         return cls(
