@@ -422,5 +422,23 @@ class MCPManager:
             pass
 
 
-# 全局单例
-mcp_manager = MCPManager()
+# 惰性单例 — 首次访问时才初始化，避免 import 时副作用
+_mcp_instance: Optional[MCPManager] = None
+_mcp_lock = threading.Lock()
+
+
+def get_mcp_manager() -> MCPManager:
+    """获取 MCPManager 单例（惰性初始化，首次调用才触发线程/远程拉取）。"""
+    global _mcp_instance
+    if _mcp_instance is None:
+        with _mcp_lock:
+            if _mcp_instance is None:
+                _mcp_instance = MCPManager()
+    return _mcp_instance
+
+
+def __getattr__(name: str):
+    """向后兼容：模块级 mcp_manager 属性 → 惰性获取单例"""
+    if name == "mcp_manager":
+        return get_mcp_manager()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
