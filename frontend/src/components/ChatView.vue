@@ -49,7 +49,8 @@
           </div>
 
           <article v-for="(msg, index) in chatStore.messages" :key="msg.id"
-            :class="['message-row', msg.role]">
+            :class="['message-row', msg.role]"
+            v-memo="[msg.id, msg.content, msg.role]">
             <div class="message-avatar">
               <User v-if="msg.role === 'user'" :size="15" />
               <Bot v-else :size="15" />

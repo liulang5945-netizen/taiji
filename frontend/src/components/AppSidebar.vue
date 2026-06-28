@@ -31,6 +31,7 @@
     <div class="session-list" role="list" aria-label="会话列表">
       <div class="section-label">对话</div>
       <div v-for="session in chatStore.sessions" :key="session.id"
+        v-memo="[session.id, session.name, chatStore.currentSessionId]"
         role="listitem"
         :class="['session-item', { active: chatStore.currentSessionId === session.id }]"
         @click="openSession(session.id)"
