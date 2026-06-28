@@ -79,7 +79,7 @@ class PluginManager:
     def get_plugin(self, plugin_id: str) -> Optional[PluginManifest]:
         return self._plugins.get(plugin_id)
 
-    def load_plugin(self, plugin_id: str):
+    def load_plugin(self, plugin_id: str) -> bool:
         """加载插件"""
         manifest = self._plugins.get(plugin_id)
         if not manifest:

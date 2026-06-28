@@ -305,6 +305,7 @@ class ReActEngine:
     """ReAct 推理引擎：Thought -> Action -> Observation 循环"""
 
     def __init__(self, max_steps: int = 15, stream_callback: Callable = None):
+        """max_steps: 最大推理步数（15 步足以覆盖大多数多步工具调用场景）"""
         self.max_steps = max_steps
         self.stream_callback = stream_callback
         self._cancelled = False
