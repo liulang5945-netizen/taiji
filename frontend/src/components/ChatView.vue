@@ -48,7 +48,12 @@
             </div>
           </div>
 
-          <article v-for="(msg, index) in chatStore.messages" :key="msg.id"
+          <div v-if="hasMoreMessages" class="load-more-row">
+            <button class="load-more-btn" @click="showMore">
+              显示更多消息（{{ messageLimit }}/{{ chatStore.messages.length }}）
+            </button>
+          </div>
+          <article v-for="(msg, index) in displayedMessages" :key="msg.id"
             :class="['message-row', msg.role]"
             v-memo="[msg.id, msg.content, msg.role]">
             <div class="message-avatar">
@@ -174,6 +179,14 @@ watch(() => chatStore.messages.length, scrollToBottom)
 watch(() => chatStore.isReceiving, scrollToBottom)
 
 const isRecording = ref(false)
+const messagePageSize = 50
+const messageLimit = ref(messagePageSize)
+const displayedMessages = computed(() => {
+  const msgs = chatStore.messages
+  return msgs.length > messageLimit.value ? msgs.slice(-messageLimit.value) : msgs
+})
+const hasMoreMessages = computed(() => chatStore.messages.length > messageLimit.value)
+function showMore() { messageLimit.value += messagePageSize }
 const inputPlaceholder = computed(() => {
   if (isRecording.value) return '正在录音...'
   return '输入任务、问题或文件说明'
@@ -430,8 +443,22 @@ onMounted(scrollToBottom)
   background: var(--primary-subtle);
 }
 
+/* Load more */
+.load-more-row { text-align: center; padding: 8px 0 4px; }
+.load-more-btn {
+  background: var(--bg-muted); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); color: var(--text-muted);
+  font-size: 12px; padding: 6px 16px; cursor: pointer;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.load-more-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+
 /* 消息 */
-.message-row { display: flex; gap: 12px; align-items: flex-start; }
+.message-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
 .message-row.user { flex-direction: row-reverse; }
 .message-row.user .message-main { align-items: flex-end; }
 .message-avatar {
