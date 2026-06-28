@@ -198,8 +198,8 @@ class BodyCore:
                 result["gpu_memory_used_gb"] = round(
                     torch.cuda.memory_allocated(0) / (1024**3), 1
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("core: non-critical %s", e, exc_info=True)
 
         return result
 

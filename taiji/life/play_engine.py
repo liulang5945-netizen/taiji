@@ -252,8 +252,8 @@ class PlayEngine:
                 ]
                 if weak_domains:
                     topic = f"深入了解{random.choice(weak_domains)}领域"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("play_engine: non-critical %s", e, exc_info=True)
 
         # 生成思考（模拟态极的"内心独白"）
         thoughts = [

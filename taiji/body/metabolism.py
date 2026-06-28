@@ -162,8 +162,8 @@ def estimate_model_params(model) -> Optional[float]:
         actual = sum(p.numel() for p in model.parameters())
         if actual > 1e6:
             return round(actual / 1e9, 2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("metabolism: non-critical %s", e, exc_info=True)
 
     return None
 

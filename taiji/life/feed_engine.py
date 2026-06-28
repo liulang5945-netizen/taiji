@@ -577,8 +577,8 @@ class FeedEngine:
                     report.recommendations.append(
                         f"能力薄弱领域: {', '.join(weak_categories)}，建议多吃相关数据"
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("feed_engine: non-critical %s", e, exc_info=True)
 
         # 检查数据量
         if report.samples_generated < 10:
@@ -666,8 +666,8 @@ class FeedEngine:
                     items_data = json.load(f)
                 for item_data in items_data:
                     self._content_hashes.add(item_data.get("content_hash", ""))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("feed_engine: non-critical %s", e, exc_info=True)
 
     # ─── 状态查询 ───────────────────────────────────
 
@@ -746,8 +746,8 @@ class FeedEngine:
                             plan["recommended_sources"].append("喂养创意文本和对话")
                         elif cat == "math":
                             plan["recommended_sources"].append("喂养数学题目和解答")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("feed_engine: non-critical %s", e, exc_info=True)
 
         if not plan["weak_categories"]:
             plan["recommended_sources"].append("当前能力均衡，继续保持多样化的数据摄入")

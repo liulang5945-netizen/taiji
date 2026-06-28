@@ -336,8 +336,8 @@ class SleepEngine:
                 feed_engine = get_feed_engine()
                 feed_engine.clear_pending_samples()
                 logger.info("  Feed engine pending samples cleared")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("sleep_engine: non-critical %s", e, exc_info=True)
             
         except ImportError:
             logger.info("  DataCollector not available, skipping")
@@ -493,8 +493,8 @@ class SleepEngine:
                         model_path = getattr(app_state, "_loaded_model_name", "") or ""
                         if model_path and os.path.isdir(model_path):
                             checkpoint_dir = model_path
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("sleep_engine: non-critical %s", e, exc_info=True)
                     if not checkpoint_dir:
                         checkpoint_dir = os.path.join(self.data_dir, "checkpoints")
                     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -513,8 +513,8 @@ class SleepEngine:
                 try:
                     if hasattr(_app_state, 'finish_training'):
                         _app_state.finish_training()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("sleep_engine: non-critical %s", e, exc_info=True)
 
     def _validate_training_effect(self, model, tokenizer, device,
                                    final_loss: float, loss_history: list):
@@ -727,8 +727,8 @@ class SleepEngine:
                     constraints["max_params"] = "7B"
                 else:
                     constraints["max_params"] = "14B"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("sleep_engine: non-critical %s", e, exc_info=True)
         return constraints
 
     def _generate_evolution_corpus(self, report: SleepReport):

@@ -421,8 +421,8 @@ class LifeScheduler:
                 from taiji.agent.context_manager import get_context_manager
                 ctx = get_context_manager()
                 ctx.decay_memories()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("life_scheduler: non-critical %s", e, exc_info=True)
 
         # 定期保存状态
         if self._total_heartbeats % 10 == 0:
@@ -758,8 +758,8 @@ class LifeScheduler:
                     events_data = json.load(f)
                 for item in events_data:
                     self._event_log.append(LifeEvent(**item))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("life_scheduler: non-critical %s", e, exc_info=True)
 
 
 # ─── 全局实例 ─────────────────────────────────────

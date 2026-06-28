@@ -269,8 +269,8 @@ class Cortex:
                 f"Q: {prompt[:100]} A: {response[:100]}",
                 source="cortex",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cortex: non-critical %s", e, exc_info=True)
 
         # 6. 反馈
         if response and not response.startswith("["):

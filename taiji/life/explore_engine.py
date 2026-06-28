@@ -200,8 +200,8 @@ class ExploreEngine:
             if weak_domains:
                 import random
                 return random.choice(weak_domains)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("explore_engine: non-critical %s", e, exc_info=True)
 
         # 从好奇心主题池选择
         curiosity_topics = [
@@ -306,8 +306,8 @@ class ExploreEngine:
                 kb = get_rag_kb()
                 if kb:
                     kb.add_document(content[:2000], metadata={"topic": topic, "source": url})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("explore_engine: non-critical %s", e, exc_info=True)
 
             return True
         except Exception as e:
@@ -330,8 +330,8 @@ class ExploreEngine:
             evo.metrics.knowledge_domains[topic] = \
                 evo.metrics.knowledge_domains.get(topic, 0) + 1.0
             evo._save_metrics()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("explore_engine: non-critical %s", e, exc_info=True)
 
     # ─── 持久化 ─────────────────────────────────────
 

@@ -112,8 +112,8 @@ class SafetyGuard:
             if resources.get("memory_percent", 0) > 90:
                 logger.warning("Memory usage too high, pausing auto tasks")
                 return False
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("safety: non-critical %s", e, exc_info=True)
         return True
 
     def rate_limit(self, action: str, max_per_minute: int = None) -> bool:
