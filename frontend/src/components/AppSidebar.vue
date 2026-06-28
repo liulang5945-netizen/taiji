@@ -30,6 +30,12 @@
 
     <div class="session-list" role="list" aria-label="会话列表">
       <div class="section-label">对话</div>
+      <!-- 加载骨架 -->
+      <div v-if="!chatStore.sessionsLoaded" class="session-skeleton">
+        <div v-for="n in 3" :key="'skel-'+n" class="skeleton-item" aria-hidden="true">
+          <span class="skeleton-bar" />
+        </div>
+      </div>
       <div v-for="session in chatStore.sessions" :key="session.id"
         v-memo="[session.id, session.name, chatStore.currentSessionId]"
         role="listitem"
@@ -151,6 +157,16 @@ const navGroups = computed(() => [
 
 .nav-icon { flex-shrink: 0; }
 .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.session-skeleton { padding: 0 4px; }
+.skeleton-item { padding: 6px 9px; margin-bottom: 4px; }
+.skeleton-bar {
+  display: block; height: 14px; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-muted) 25%, var(--bg-hover) 50%, var(--bg-muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 </style>
 
 <style>

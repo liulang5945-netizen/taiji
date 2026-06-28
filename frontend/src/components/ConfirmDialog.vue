@@ -26,6 +26,7 @@ const confirmText = ref('确定')
 const cancelText = ref('取消')
 
 let resolvePromise = null
+let previousFocus = null
 
 function show(options = {}) {
   title.value = options.title || '确认操作'
@@ -33,8 +34,9 @@ function show(options = {}) {
   type.value = options.type || 'primary'
   confirmText.value = options.confirmText || '确定'
   cancelText.value = options.cancelText || '取消'
+  // 保存当前焦点，关闭时恢复
+  previousFocus = document.activeElement
   visible.value = true
-  // 自动聚焦，使 Escape 键立即生效
   nextTick(() => {
     overlayRef.value?.focus()
   })
@@ -44,13 +46,21 @@ function show(options = {}) {
 }
 
 function handleConfirm() {
-  visible.value = false
-  if (resolvePromise) resolvePromise(true)
+  closeAndRestore(true)
 }
 
 function handleCancel() {
+  closeAndRestore(false)
+}
+
+function closeAndRestore(result) {
   visible.value = false
-  if (resolvePromise) resolvePromise(false)
+  // 恢复焦点
+  if (previousFocus && typeof previousFocus.focus === 'function') {
+    try { previousFocus.focus() } catch (_) { /* non-critical */ }
+  }
+  previousFocus = null
+  if (resolvePromise) resolvePromise(result)
 }
 
 defineExpose({ show })

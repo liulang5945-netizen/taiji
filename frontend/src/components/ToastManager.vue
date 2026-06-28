@@ -30,9 +30,23 @@ const icons = {
 
 let counter = 0
 
+function sanitizeMessage(msg) {
+  // 截断过长的错误消息，去除堆栈跟踪
+  if (typeof msg !== 'string') return String(msg)
+  // 截掉 Traceback/stack trace 行
+  const lines = msg.split('\n')
+  const clean = []
+  for (const line of lines) {
+    if (line.match(/^\s*(File |Traceback|  File "|    |\w+Error:)/)) break
+    clean.push(line)
+  }
+  const result = clean.join('\n').trim() || msg.slice(0, 200)
+  return result.length > 300 ? result.slice(0, 297) + '...' : result
+}
+
 function showToast(message, type = 'info', duration = 3000) {
   const id = ++counter
-  toasts.value.push({ id, message, type, duration })
+  toasts.value.push({ id, message: sanitizeMessage(message), type, duration })
   setTimeout(() => removeToast(id), duration)
 }
 
