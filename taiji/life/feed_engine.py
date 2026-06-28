@@ -489,7 +489,7 @@ class FeedEngine:
     def _feed_from_conversations(self, report: FeedReport):
         """从用户对话历史中进食"""
         try:
-            from agent.data_collector import get_collector
+            from taiji.agent_ext.data_collector import get_collector
             collector = get_collector()
             react_data, conv_data = collector.load_as_training_data()
 
@@ -527,7 +527,7 @@ class FeedEngine:
     def _feed_from_data_collector(self, report: FeedReport):
         """从数据收集器中进食 ReAct 数据"""
         try:
-            from agent.data_collector import get_collector
+            from taiji.agent_ext.data_collector import get_collector
             collector = get_collector()
             react_data, _ = collector.load_as_training_data()
 

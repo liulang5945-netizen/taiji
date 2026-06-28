@@ -15,8 +15,8 @@ import re
 logger = logging.getLogger("Hardware")
 
 
-def resolve_device(config) -> str:
-    """自动判断最优的运算设备"""
+def resolve_device(config: "TrainingConfig") -> str:
+    """自动判断最优的运算设备（cuda > mps > directml > cpu）"""
     if config.device != "auto":
         return config.device
     import torch

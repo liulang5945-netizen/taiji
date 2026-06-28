@@ -982,7 +982,7 @@ def register_local_tools():
                         for v in vals:
                             try:
                                 numeric.append(float(v))
-                            except:
+                            except (ValueError, TypeError):
                                 pass
                         if numeric:
                             result += f"\n{h}: min={min(numeric):.2f}, max={max(numeric):.2f}, avg={sum(numeric)/len(numeric):.2f}"

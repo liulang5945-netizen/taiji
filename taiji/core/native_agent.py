@@ -99,7 +99,7 @@ class NativeAgentEngine:
         # 自修改引擎：自主发现和安装新工具
         self._self_mod = None
         try:
-            from agent.self_modification import get_self_modification_engine
+            from taiji.agent_ext.self_modification import get_self_modification_engine
             self._self_mod = get_self_modification_engine()
             logger.info("自修改引擎已连接")
         except Exception:
@@ -360,8 +360,8 @@ class NativeAgentEngine:
     def _connect_knowledge_learner(self):
         """连接知识学习器，注入搜索、LLM 和浏览器能力"""
         try:
-            from agent.knowledge_learner import get_knowledge_learner
-            from agent.tool_registry import registry
+            from taiji.agent_ext.knowledge_learner import get_knowledge_learner
+            from taiji.agent_ext.tool_registry import registry
             learner = get_knowledge_learner()
             # 注入LLM函数
             if hasattr(self, 'inference') and hasattr(self.inference, 'generate'):
@@ -386,7 +386,7 @@ class NativeAgentEngine:
     def _connect_web_context(self):
         """天生联网 + 边学边聊：自动搜索、注入上下文、后台沉淀知识"""
         try:
-            from agent.tool_registry import registry
+            from taiji.agent_ext.tool_registry import registry
             if not registry.has("search"):
                 return
 
@@ -479,7 +479,7 @@ class NativeAgentEngine:
 
         def _do_learn():
             try:
-                from agent.knowledge_learner import get_knowledge_learner
+                from taiji.agent_ext.knowledge_learner import get_knowledge_learner
                 learner = get_knowledge_learner()
                 if not learner:
                     return
@@ -510,7 +510,7 @@ class NativeAgentEngine:
                                     # 提取 JSON 部分
                                     json_str = llm_result[llm_result.index("["):llm_result.rindex("]")+1]
                                     entries = json.loads(json_str)
-                                    from agent.knowledge_learner import KnowledgeEntry
+                                    from taiji.agent_ext.knowledge_learner import KnowledgeEntry
                                     for entry_data in entries[:3]:  # 每页最多 3 条
                                         if isinstance(entry_data, dict) and entry_data.get("concept"):
                                             entry = KnowledgeEntry(
@@ -528,7 +528,7 @@ class NativeAgentEngine:
                                 logger.debug(f"边学边聊结构化失败: {e}")
                         else:
                             # 无 LLM 时，按段落简单提取
-                            from agent.knowledge_learner import KnowledgeEntry
+                            from taiji.agent_ext.knowledge_learner import KnowledgeEntry
                             paragraphs = [p.strip() for p in content.split("\n") if len(p.strip()) > 50]
                             for para in paragraphs[:2]:
                                 entry = KnowledgeEntry(

@@ -280,7 +280,7 @@ class SleepEngine:
     def _sleep_phase_model_training(self, report: SleepReport):
         """Phase 2: 模型训练 — 用收集的数据在线微调态极模型"""
         try:
-            from agent.data_collector import get_collector
+            from taiji.agent_ext.data_collector import get_collector
             from taiji.data.data_generator import generate_bulk_react_data, generate_bulk_conversation_data
             
             collector = get_collector()

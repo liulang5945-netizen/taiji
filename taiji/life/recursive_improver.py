@@ -738,7 +738,7 @@ class RecursiveImprover:
                     try:
                         data = json.loads(line.strip())
                         self._strategy_records.append(StrategyRecord(**data))
-                    except:
+                    except (json.JSONDecodeError, TypeError, ValueError):
                         pass
 
     def _ensure_data_dir(self):

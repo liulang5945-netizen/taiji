@@ -109,8 +109,11 @@ class PluginManager:
         if hasattr(module, "get_router"):
             try:
                 router = module.get_router()
-                from api.app import app
-                app.include_router(router, prefix=f"/api/plugins/{plugin_id}")
+                try:
+                    from api.app import app
+                    app.include_router(router, prefix=f"/api/plugins/{plugin_id}")
+                except ImportError:
+                    logger.debug("FastAPI app 不可用，跳过插件 %s 路由注册", plugin_id)
                 logger.info(f"插件 {plugin_id} 路由已注册")
             except Exception as e:
                 logger.warning(f"插件 {plugin_id} 路由注册失败: {e}")
