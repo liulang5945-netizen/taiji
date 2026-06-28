@@ -9,7 +9,6 @@ TaijiCore 生命系统线程安全API接口 (ThreadSafeLifeInterface)
 - 优雅的错误处理与日志
 """
 
-import asyncio
 import threading
 import logging
 from typing import Dict, List, Optional, Any, Callable
@@ -62,8 +61,7 @@ class ThreadSafeLifeInterface:
             scheduler: 可选的life_scheduler实例，若为None则延迟初始化
         """
         self._scheduler = scheduler
-        self._lock = threading.RLock()  # 递归锁，防止死锁
-        self._async_lock = asyncio.Lock()
+        self._lock = threading.RLock()  # 统一互斥锁，同步和异步方法共用
         self._activity_log: List[str] = []
         self._event_handlers: Dict[str, List[Callable]] = {
             'on_feed': [],
@@ -72,7 +70,7 @@ class ThreadSafeLifeInterface:
             'on_evolve': [],
             'on_stress': [],
         }
-        
+
         logger.info("ThreadSafeLifeInterface initialized")
 
     # ===== 同步接口 =====
@@ -255,12 +253,12 @@ class ThreadSafeLifeInterface:
 
     async def async_feed(self, amount: float = 30.0) -> bool:
         """异步吃饭操作"""
-        async with self._async_lock:
+        with self._lock:
             return self.feed(amount)
 
     async def async_sleep(self, duration: float = 3600) -> bool:
         """异步睡眠操作（支持实际延迟）"""
-        async with self._async_lock:
+        with self._lock:
             result = self.sleep(duration)
             if result:
                 # 模拟异步睡眠（可选）
@@ -270,17 +268,17 @@ class ThreadSafeLifeInterface:
 
     async def async_play(self, enjoyment: float = 20.0) -> bool:
         """异步玩耍操作"""
-        async with self._async_lock:
+        with self._lock:
             return self.play(enjoyment)
 
     async def async_evolve(self, improvement: Dict[str, float]) -> bool:
         """异步进化操作"""
-        async with self._async_lock:
+        with self._lock:
             return self.evolve(improvement)
 
     async def async_get_state(self) -> LifeStateSnapshot:
         """异步获取生命状态"""
-        async with self._async_lock:
+        with self._lock:
             return self.get_life_state()
 
     # ===== 事件系统 =====

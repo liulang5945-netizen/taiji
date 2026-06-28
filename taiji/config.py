@@ -318,6 +318,35 @@ class ModelConfig:
         }
         return qwen_configs.get(model_name, qwen_configs["Qwen/Qwen2.5-0.5B"])
 
+    def validate(self) -> bool:
+        """Validate model configuration on construction.
+        Raises ValueError if any parameter is invalid.
+        """
+        errors = []
+        if self.vocab_size < 1:
+            errors.append("vocab_size must be >= 1")
+        if self.hidden_size < 1:
+            errors.append("hidden_size must be >= 1")
+        if self.intermediate_size < 1:
+            errors.append("intermediate_size must be >= 1")
+        if self.num_hidden_layers < 1:
+            errors.append("num_hidden_layers must be >= 1")
+        if self.num_attention_heads < 1:
+            errors.append("num_attention_heads must be >= 1")
+        if self.num_key_value_heads < 1:
+            errors.append("num_key_value_heads must be >= 1")
+        if self.max_position_embeddings < 1:
+            errors.append("max_position_embeddings must be >= 1")
+        if self.num_attention_heads % self.num_key_value_heads != 0:
+            errors.append(f"num_attention_heads ({self.num_attention_heads}) "
+                         f"must be divisible by num_key_value_heads ({self.num_key_value_heads})")
+        if self.hidden_size % self.num_attention_heads != 0:
+            errors.append(f"hidden_size ({self.hidden_size}) "
+                         f"must be divisible by num_attention_heads ({self.num_attention_heads})")
+        if errors:
+            raise ValueError(f"ModelConfig validation failed: {'; '.join(errors)}")
+        return True
+
     @property
     def head_dim(self) -> int:
         return self.hidden_size // self.num_attention_heads
