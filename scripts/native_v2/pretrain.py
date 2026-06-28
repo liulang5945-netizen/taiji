@@ -8,6 +8,7 @@ import glob
 import json
 import math
 import os
+from functools import partial
 import random
 import time
 from pathlib import Path
@@ -20,25 +21,26 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 
 DEFAULT_MODEL_CONFIG = {
-    "hidden_size": 1024,
-    "num_hidden_layers": 24,
-    "num_attention_heads": 16,
-    "num_key_value_heads": 16,
-    "intermediate_size": 2816,
+    # 真正的 1B 配置（GQA 8:1）
+    "hidden_size": 2048,
+    "num_hidden_layers": 22,
+    "num_attention_heads": 32,
+    "num_key_value_heads": 4,
+    "intermediate_size": 5504,
     "vocab_size": 256000,
-    "max_position_embeddings": 2048,
+    "max_position_embeddings": 4096,
     "rms_norm_eps": 1e-6,
-    "rope_theta": 1_000_000.0,
+    "rope_theta": 500_000.0,
 }
 
 DEFAULT_TRAINING_CONFIG = {
     "data_dir": "taiji_data/training_data",
     "tokenizer_path": "taiji/tokenizer_native_v2/sentencepiece.model",
     "contract_path": "taiji/tokenizer_native_v2/tokenizer_contract.json",
-    "output_dir": "taiji_data/taiji_pretrained",
-    "max_steps": 50_000,
+    "output_dir": "taiji_checkpoints/taiji_1b",
+    "max_steps": 200_000,
     "batch_size": 1,
-    "gradient_accumulation_steps": 32,
+    "gradient_accumulation_steps": 64,
     "learning_rate": 3e-4,
     "min_learning_rate": 3e-5,
     "warmup_steps": 1000,
@@ -47,9 +49,20 @@ DEFAULT_TRAINING_CONFIG = {
     "log_every": 50,
     "weight_decay": 0.1,
     "grad_clip": 1.0,
-    "use_amp": True,
-    "num_workers": 4,
+    "use_amp": False,
+    "num_workers": 2,
     "seed": 42,
+}
+
+# 数据类别权重 — 按类别加权采样，避免中文过度主导
+CATEGORY_WEIGHTS = {
+    "english": 0.30,
+    "chinese": 0.25,
+    "code": 0.15,
+    "math": 0.12,
+    "wikipedia": 0.08,
+    "taiji": 0.05,
+    "replay": 0.05,
 }
 
 _SKIP_DIR_NAMES = {".cache", "__pycache__", ".git", "node_modules"}
@@ -238,25 +251,72 @@ class NativeDataset(Dataset):
         return {"input_ids": input_ids, "labels": labels}
 
 
+def _categorize_path(path: str) -> str:
+    """Map a data file path to a category for weighted sampling."""
+    name = os.path.basename(path).lower()
+    dirname = os.path.dirname(path).lower()
+    full = (dirname + "/" + name).lower()
+    if any(k in full for k in ("fineweb_edu", "fineweb2_en", "falcon_refinedweb_en", "en_batch")):
+        return "english"
+    if any(k in full for k in ("skypile_zh", "fineweb2_zh", "zh_batch", "zh_fineweb2", "zh_wikipedia")):
+        return "chinese"
+    if any(k in full for k in ("codeparrot", "code_batch", "tech_from_code")):
+        return "code"
+    if any(k in full for k in ("openwebmath", "math_batch")):
+        return "math"
+    if any(k in full for k in ("wikipedia", "wiki_batch", "multilingual")):
+        return "wikipedia"
+    if any(k in full for k in ("taiji_native", "taiji_batch", "taiji_special")):
+        return "taiji"
+    if any(k in full for k in ("replay_batch", "replay")):
+        return "replay"
+    return "general"
+
+
 class StreamingNativeDataset(IterableDataset):
-    """Streaming dataset that reads JSONL files on-the-fly without loading all into memory."""
-    def __init__(self, data_dir: str, sp, contract: dict, max_length: int, buffer_size: int = 10000):
+    """Streaming dataset with optional category-weighted sampling."""
+    def __init__(self, data_dir: str, sp, contract: dict, max_length: int,
+                 buffer_size: int = 10000, category_weights: dict | None = None):
         self.data_dir = data_dir
         self.sp = sp
         self.text_offset = int(contract["text_offset"])
         self.pad_id = int(contract["special_tokens"]["<pad>"])
         self.max_length = max_length
         self.buffer_size = buffer_size
+        self.category_weights = category_weights
 
     def _get_shard_files(self):
-        """Get all JSONL files in data_dir."""
-        files = []
+        """Get all JSONL files grouped by category if weights provided."""
+        if not self.category_weights:
+            files = []
+            for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
+                for path in glob.glob(os.path.join(self.data_dir, pattern), recursive=True):
+                    if not _should_skip_data_path(path):
+                        files.append(path)
+            random.shuffle(files)
+            return files
+        # Weighted: group by category
+        categorized = {cat: [] for cat in self.category_weights}
+        uncategorized = []
         for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
             for path in glob.glob(os.path.join(self.data_dir, pattern), recursive=True):
                 if not _should_skip_data_path(path):
-                    files.append(path)
-        random.shuffle(files)
-        return files
+                    cat = _categorize_path(path)
+                    if cat in categorized:
+                        categorized[cat].append(path)
+                    else:
+                        uncategorized.append(path)
+        # Flatten weighted by category, shuffle within each group
+        result = []
+        cats = list(self.category_weights.keys())
+        weights = list(self.category_weights.values())
+        for _ in range(sum(len(v) for v in categorized.values()) + len(uncategorized)):
+            cat = random.choices(cats, weights=weights, k=1)[0]
+            if categorized[cat]:
+                result.append(random.choice(categorized[cat]))
+            elif uncategorized:
+                result.append(random.choice(uncategorized))
+        return result
 
     def _extract(self, line: str) -> str:
         try:
@@ -403,7 +463,7 @@ def cleanup_checkpoints(output_dir: str, keep_last: int = 3):
             print(f"Removed old checkpoint: {ckpt.name}")
 
 
-def load_holdout_eval(holdout_dir: str, sp, contract: dict, max_length: int, max_samples: int = 100):
+def load_holdout_eval(holdout_dir: str, sp, contract: dict, max_length: int, max_samples: int = 500):
     """Load holdout evaluation data."""
     holdout_dir = Path(holdout_dir)
     if not holdout_dir.exists():
@@ -461,7 +521,8 @@ def evaluate_holdout(model, holdout_data: dict, device, use_amp: bool, amp_dtype
                 total_loss += loss.item()
             avg_loss = total_loss / len(samples)
             results[category] = avg_loss
-            print(f"  holdout {category}: loss={avg_loss:.4f}")
+            ppl = math.exp(avg_loss) if avg_loss < 20 else float('inf')
+            print(f"  holdout {category}: loss={avg_loss:.4f} ppl={ppl:.1f}")
 
     model.train()
     return results
@@ -487,17 +548,24 @@ def train_config(cfg_all: dict[str, Any]) -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = TaijiBackbone(model_cfg).to(device)
+    # Gradient checkpointing: trades ~20% compute for ~60% less activation memory
+    if train_cfg.get("gradient_checkpointing", False) and device.type == "cpu":
+        for layer in model.layers:
+            layer.forward = partial(torch.utils.checkpoint.checkpoint, layer.forward, use_reentrant=False)
+        print("Gradient checkpointing enabled (CPU memory optimization)")
     params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"device={device} params={params:.1f}M sp_vocab={sp.GetPieceSize()}")
 
     # Choose dataset based on config
     use_streaming = train_cfg.get("use_streaming", False)
     if use_streaming:
+        cat_weights = train_cfg.get("category_weights") or CATEGORY_WEIGHTS
         dataset = StreamingNativeDataset(
             train_cfg["data_dir"], sp, contract, train_cfg["max_length"],
-            buffer_size=train_cfg.get("streaming_buffer", 10000)
+            buffer_size=train_cfg.get("streaming_buffer", 10000),
+            category_weights=cat_weights,
         )
-        print("Using streaming dataset")
+        print(f"Using streaming dataset with category weights: {cat_weights}")
     else:
         dataset = NativeDataset(train_cfg["data_dir"], sp, contract, train_cfg["max_length"])
         if len(dataset) == 0:
@@ -668,6 +736,8 @@ def build_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         train_cfg["streaming_buffer"] = args.streaming_buffer
     if args.holdout_dir:
         train_cfg["holdout_dir"] = args.holdout_dir
+    if args.gradient_checkpointing:
+        train_cfg["gradient_checkpointing"] = True
     if args.keep_last_checkpoints:
         train_cfg["keep_last_checkpoints"] = args.keep_last_checkpoints
 
@@ -697,6 +767,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_streaming", action="store_true", help="Use streaming dataset (don't load all into memory)")
     parser.add_argument("--streaming_buffer", type=int, default=10000, help="Streaming shuffle buffer size")
     parser.add_argument("--holdout_dir", default=None, help="Directory containing holdout eval JSONL files")
+    parser.add_argument("--gradient_checkpointing", action="store_true", help="Enable gradient checkpointing (save activation memory, ~20% slower)")
     parser.add_argument("--keep_last_checkpoints", type=int, default=3, help="Number of recent checkpoints to keep")
     args = parser.parse_args()
     if args.config:
