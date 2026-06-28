@@ -24,7 +24,7 @@ taiji/
 ├── tokenizer.py      # Taiji Tokenizer (SentencePiece)
 ├── native_agent.py   # Taiji Native Agent Engine (perception/memory/planning/reflection)
 ├── layers.py         # Taiji Foundation Layers (RMSNorm, TransformerBlock)
-├── train_pipeline.py # Taiji Training Pipeline
+├── train/            # Taiji training modules (pretrain / finetune / DPO / multimodal)
 ├── auto_upgrade.py   # Taiji Auto-Upgrade Engine (bottleneck detection + knowledge distillation)
 │
 ├── body.py           # Body Core (resource management)
@@ -66,7 +66,9 @@ model, tokenizer = create_model(size="350m", device="cpu")
 
 ```bash
 # Full pipeline: data generation → pretrain → finetune
-python -m taiji.train_pipeline --size 350m --device cpu --pretrain_epochs 5 --finetune_epochs 10
+python scripts/training/run_local_native_vocab.py
+python scripts/native_v2/pretrain.py --data_dir taiji_data/training_data/pretrain_mix_v1 --output taiji_data/taiji_pretrained_1b_stage1
+python taiji/train/finetune_taiji.py
 
 # Or train via the API (POST /api/train/stream)
 ```

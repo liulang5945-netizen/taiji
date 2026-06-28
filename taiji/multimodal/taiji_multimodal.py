@@ -1,39 +1,14 @@
+"""Backward-compatible multimodal metadata shim.
+
+This module used to define an older standalone multimodal token space and
+mutate ``taiji.config.SPECIAL_TOKENS`` at import time. Native-v2 now uses
+``taiji/tokenizer_contract.json`` as the single source of truth, so this file
+only keeps lightweight compatibility metadata and must not redefine token IDs.
 """
-态极 (Taiji) 多模态配置
-定义多模态 Token 空间和模态类型
-"""
-from taiji.config import SPECIAL_TOKENS
+
+from taiji.config import MM_CONTROL_TOKENS
 
 
-# 多模态特殊 Token 扩展 (接在工具名范围 32150-32899 之后，避免 ID 冲突)
-MULTIMODAL_TOKENS = {
-    # === 图像模态 (32900-32909) ===
-    "image_start":      32900,  # <image>
-    "image_end":        32901,  # </image>
-    "img_gen":          32902,  # <img_gen> — 图像生成请求
-    "img_edit":         32903,  # <img_edit> — 图像编辑请求
-    "img_result":       32904,  # <img_result> — 图像生成结果
-
-    # === 音频模态 (32910-32919) ===
-    "audio_start":      32910,  # <audio>
-    "audio_end":        32911,  # </audio>
-    "speech":           32912,  # <speech> — 语音识别结果
-    "tts_request":      32913,  # <tts> — 语音合成请求
-    "tts_result":       32914,  # <tts_result> — 语音合成结果
-
-    # === 视频模态 (32920-32929) ===
-    "video_start":      32920,  # <video>
-    "video_end":        32921,  # </video>
-    "video_gen":        32922,  # <video_gen> — 视频生成请求
-    "frames":           32923,  # <frames> — 视频帧序列
-}
-
-
-# 合并到主 SPECIAL_TOKENS
-SPECIAL_TOKENS.update(MULTIMODAL_TOKENS)
-
-
-# 模态类型枚举
 class Modality:
     TEXT = "text"
     IMAGE = "image"
@@ -41,9 +16,21 @@ class Modality:
     VIDEO = "video"
 
 
-# 多模态工具注册
+MULTIMODAL_TOKENS = {
+    "image_start": MM_CONTROL_TOKENS["image_start"],
+    "image_end": MM_CONTROL_TOKENS["image_end"],
+    "audio_start": MM_CONTROL_TOKENS["audio_start"],
+    "audio_end": MM_CONTROL_TOKENS["audio_end"],
+    "video_start": MM_CONTROL_TOKENS.get("video_start"),
+    "video_end": MM_CONTROL_TOKENS.get("video_end"),
+    "img_row": MM_CONTROL_TOKENS["img_row"],
+    "gen_image": MM_CONTROL_TOKENS["gen_image"],
+    "gen_audio": MM_CONTROL_TOKENS["gen_audio"],
+    "gen_video": MM_CONTROL_TOKENS.get("gen_video"),
+}
+
+
 MULTIMODAL_TOOLS = {
-    # 图像
     "generate_image": {
         "description": "根据文字描述生成图像",
         "input_format": '{"prompt": "描述", "size": "512x512"}',
@@ -62,7 +49,6 @@ MULTIMODAL_TOOLS = {
         "modality": Modality.TEXT,
         "output": "text",
     },
-    # 音频
     "transcribe_audio": {
         "description": "将音频转为文字（语音识别）",
         "input_format": '{"audio_path": "音频路径"}',
@@ -75,7 +61,6 @@ MULTIMODAL_TOOLS = {
         "modality": Modality.AUDIO,
         "output": "audio_path",
     },
-    # 视频
     "understand_video": {
         "description": "理解视频内容并描述",
         "input_format": '{"video_path": "视频路径"}',
@@ -97,7 +82,6 @@ MULTIMODAL_TOOLS = {
 }
 
 
-# 态极版本信息
 TAIJI_VERSION = "4.0.0"
 TAIJI_NAME = "态极"
 TAIJI_NAME_EN = "Taiji"

@@ -165,7 +165,7 @@ async function startUpgrade() {
           errorDetail.value = progData.error || ''
           progressMessage.value = progData.message || '升级失败'
         }
-      } catch (_) {}
+      } catch (e) { console.debug('[UpgradeNotification] poll error:', e.message) }
     }, 2000)
   } catch (e) {
     upgradeState.value = 'error'

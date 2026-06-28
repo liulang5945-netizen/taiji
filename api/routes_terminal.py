@@ -116,9 +116,23 @@ async def _read_stream(stream, ws: WebSocket, prefix: str):
 
 @router.websocket("/ws/terminal")
 async def terminal_websocket(ws: WebSocket):
-    """Web 终端 WebSocket 端点"""
+    """Web 终端 WebSocket 端点
+
+    安全防护：
+    - JWT 认证（强制）
+    - 并发限制（默认 3）
+    - 空闲超时（默认 300s）
+    - 可通过 terminal_enabled 配置完全禁用
+    """
     import sys as _sys
     import subprocess as _sp
+
+    # 全局开关：允许管理员完全禁用终端功能
+    if not get_setting("terminal_enabled", True):
+        await ws.accept()
+        await ws.send_text(json.dumps({"type": "error", "data": "终端功能已被管理员禁用"}))
+        await ws.close(code=4003, reason="Terminal disabled")
+        return
 
     # 认证检查
     if not _verify_ws_token(ws):
@@ -135,6 +149,10 @@ async def terminal_websocket(ws: WebSocket):
         return
 
     process = None
+    import time as _time
+    _session_started = _time.time()
+    _pid = 0
+
     loop = asyncio.get_event_loop()
     try:
         await ws.accept()
@@ -163,7 +181,8 @@ async def terminal_websocket(ws: WebSocket):
             cwd=work_dir, env={**os.environ, "TERM": "xterm-256color"},
             creationflags=creationflags,
         )
-        logger.info(f"终端进程启动: PID={process.pid}")
+        logger.info(f"终端进程启动: PID={process.pid}, work_dir={work_dir}, shell={shell_cmd}")
+        _pid = process.pid
 
         # 欢迎消息
         await ws.send_text(json.dumps({
@@ -216,18 +235,28 @@ async def terminal_websocket(ws: WebSocket):
                 msg = json.loads(raw)
                 t = msg.get("type", "")
                 if t == "input" and process.stdin and not process.stdin.closed:
-                    process.stdin.write(msg.get("data", "").encode("utf-8"))
+                    data = msg.get("data", "")
+                    process.stdin.write(data.encode("utf-8"))
                     process.stdin.flush()
+                    # 审计日志（截断过长的输入，防止刷屏）
+                    _trimmed = data.strip()[:200] + ("..." if len(data.strip()) > 200 else "")
+                    if _trimmed:
+                        logger.info(f"终端[PID={_pid}] 输入: {_trimmed}")
                 elif t == "ping":
                     await ws.send_text(json.dumps({"type": "pong"}))
         except json.JSONDecodeError:
             if process.stdin and not process.stdin.closed:
                 process.stdin.write(raw.encode("utf-8"))
                 process.stdin.flush()
+                _trimmed = raw.strip()[:200] + ("..." if len(raw.strip()) > 200 else "")
+                if _trimmed:
+                    logger.info(f"终端[PID={_pid}] 输入: {_trimmed}")
         except WebSocketDisconnect:
             pass
         finally:
             drain_task.cancel()
+            elapsed = _time.time() - _session_started
+            logger.info(f"终端会话结束: PID={_pid}, 持续 {elapsed:.0f}s")
 
     except WebSocketDisconnect:
         logger.info("终端客户端断开")

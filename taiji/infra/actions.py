@@ -121,7 +121,13 @@ class LocalActionProvider(ActionProvider):
             return [f"[错误] 列出目录失败: {e}"]
 
     def execute(self, command: str, timeout: int = 30) -> str:
-        """执行系统命令"""
+        """执行系统命令
+
+        安全策略：
+        - 优先使用 shlex 将命令解析为参数列表，避免 shell 注入
+        - 仅当命令包含 shell 特性（管道、重定向等）时回退到 shell=True
+        - 危险命令通过 _blocked_commands 黑名单拒绝
+        """
         if self.sandbox:
             return "[错误] 沙箱模式下不允许执行命令"
 
@@ -130,15 +136,35 @@ class LocalActionProvider(ActionProvider):
             if blocked in command:
                 return f"[错误] 危险命令被阻止: {command}"
 
+        # 检查是否包含 shell 特性（管道、重定向、命令链）
+        _shell_operators = {"|", ">", "<", "&&", "||", ";", "&"}
+        _tokens = set(command.split() if command else [])
+        _needs_shell = bool(_shell_operators & _tokens)
+
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=self.working_dir,
-            )
+            if _needs_shell:
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=self.working_dir,
+                )
+            else:
+                # 安全模式：用 shlex 解析参数列表，防止注入
+                try:
+                    args = shlex.split(command)
+                except ValueError:
+                    args = command.split()
+                result = subprocess.run(
+                    args,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=self.working_dir,
+                )
             output = result.stdout
             if result.stderr:
                 output += f"\n[stderr]\n{result.stderr}"

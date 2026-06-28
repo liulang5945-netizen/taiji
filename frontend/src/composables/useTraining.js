@@ -283,7 +283,7 @@ export async function startTraining(toast) {
               trainState.value = 'idle';
               autoScrollTrainLog();
             }
-          } catch { /* skip */ }
+          } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
     }
@@ -449,7 +449,7 @@ export async function resumeFromCheckpoint(toast, $confirm) {
               trainState.value = 'idle';
               autoScrollTrainLog();
             }
-          } catch { /* skip */ }
+          } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
     }
@@ -543,7 +543,7 @@ async function publishStreamCommon(toast, onStartMsg) {
               trainLog.value += `⚠️ ${evt.message}\n`;
               autoScrollTrainLog();
             }
-          } catch {
+          } catch (e) { console.debug('[useTraining] parse error:', e.message) }
             // 非 JSON 纯文本，直接输出
             if (payload) trainLog.value += `${payload}\n`;
             autoScrollTrainLog();
@@ -641,7 +641,7 @@ export async function exportModelToGGUF(toast, $confirm) {
               trainLog.value += `❌ ${evt.message}\n`;
               toast(`❌ 导出失败: ${evt.message}`, 'error');
             }
-          } catch { /* skip */ }
+          } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
     }
@@ -855,7 +855,7 @@ export async function startTaijiTraining(toast) {
               trainState.value = 'idle';
               autoScrollTrainLog();
             }
-          } catch { /* skip */ }
+          } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
     }

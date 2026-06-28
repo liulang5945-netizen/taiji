@@ -123,7 +123,8 @@ class ThreadSafeLifeInterface:
 
             try:
                 result = self._scheduler.force_action("feed")
-                success = result.get("success", False)
+                success = result.get("success", False) if isinstance(result, dict) else result
+                success = bool(success)
                 action = f"feed(amount={amount})"
                 self._log_action(action)
                 if success:
@@ -151,7 +152,8 @@ class ThreadSafeLifeInterface:
 
             try:
                 result = self._scheduler.force_action("sleep")
-                success = result.get("success", False)
+                success = result.get("success", False) if isinstance(result, dict) else result
+                success = bool(success)
                 action = f"sleep(duration={duration}s)"
                 self._log_action(action)
                 if success:
@@ -179,7 +181,8 @@ class ThreadSafeLifeInterface:
 
             try:
                 result = self._scheduler.force_action("play")
-                success = result.get("success", False)
+                success = result.get("success", False) if isinstance(result, dict) else result
+                success = bool(success)
                 action = f"play(enjoyment={enjoyment})"
                 self._log_action(action)
                 if success:

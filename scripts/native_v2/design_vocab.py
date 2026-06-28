@@ -33,7 +33,7 @@ SEED_LINES = [
     "<think>我需要分析目标并选择可靠的行动。</think>",
     '<tool_call>{"name":"search","args":{"query":"AI 新闻"}}</tool_call>',
     "<tool_result>工具返回了结构化结果。</tool_result>",
-    "<final_answer>我会给出简洁且可验证的回答。</final_answer>",
+    "<final_answer>我会给出简洁且可验证的回答。",
     "Transformer RMSNorm RoPE GQA SwiGLU causal attention.",
     "Python JavaScript TypeScript shell SQL Docker Kubernetes Git.",
 ]
@@ -236,3 +236,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

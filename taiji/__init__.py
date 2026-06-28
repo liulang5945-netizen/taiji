@@ -35,10 +35,8 @@ def __getattr__(name: str):
 
         return NativeInferenceEngine
     if name == "TaijiMultimodalEngine":
-        try:
-            from taiji.multimodal.multimodal_engine import TaijiMultimodalEngine
-        except ImportError:
-            return None
+        from taiji.multimodal.multimodal_engine import TaijiMultimodalEngine
+
         return TaijiMultimodalEngine
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -119,8 +117,8 @@ class TaijiCore:
             ms = MemorySystem()
             ms.load(os.path.join("taiji_data", "memory"))
             self.context.set_memory_system(ms)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("MemorySystem 加载失败（非致命）: %s", e)
 
         # 设置持久化路径
         self.context.set_persistent_path(
@@ -132,8 +130,8 @@ class TaijiCore:
             from taiji.agent.semantic_memory import get_semantic_memory
             sm = get_semantic_memory()
             self.context.set_semantic_memory(sm)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("语义记忆加载失败（非致命）: %s", e)
 
         # ── 生命系统（统一创建，非全局单例）──
         self._feed = FeedEngine()

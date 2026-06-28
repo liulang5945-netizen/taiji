@@ -26,29 +26,7 @@ export const useAppStore = defineStore('app', () => {
   const currentLang = ref('zh')
   const showWorkspace = ref(false)
 
-  // 连接状态
-  const connectionState = ref('unknown')
-  const connectionErrorMsg = ref('')
-  const retryCountdown = ref(0)
-  const modelLoaded = ref(false)
-
   // === Getters ===
-  const connectionClass = computed(() => {
-    if (connectionState.value === 'connected') return 'connected'
-    if (connectionState.value === 'loading') return 'loading'
-    if (connectionState.value === 'connecting') return 'connecting'
-    return 'error'
-  })
-
-  const connectionStatus = computed(() => {
-    if (connectionState.value === 'connected') return modelLoaded.value ? t('status_connected') : t('status_connected_no_model')
-    if (connectionState.value === 'connecting') return t('status_connecting')
-    if (connectionState.value === 'loading') {
-      if (retryCountdown.value > 0) return t('retry', { n: retryCountdown.value })
-      return t('status_model_loading')
-    }
-    return t('status_error')
-  })
 
   const resolvedTheme = computed(() => {
     if (currentTheme.value === 'auto') {
@@ -72,12 +50,6 @@ export const useAppStore = defineStore('app', () => {
   // === Actions ===
   function toggleWorkspace() {
     showWorkspace.value = !showWorkspace.value
-  }
-
-  function setConnectionState(state, errorMsg = '', loaded = false) {
-    connectionState.value = state
-    connectionErrorMsg.value = errorMsg
-    modelLoaded.value = loaded
   }
 
   // 预设主题色 (水墨风格)
@@ -215,18 +187,11 @@ export const useAppStore = defineStore('app', () => {
     currentBgImage,
     currentLang,
     showWorkspace,
-    connectionState,
-    connectionErrorMsg,
-    retryCountdown,
-    modelLoaded,
     // Getters
-    connectionClass,
-    connectionStatus,
     resolvedTheme,
     // Actions
     t,
     toggleWorkspace,
-    setConnectionState,
     applyTheme,
     setTheme,
     setAccent,

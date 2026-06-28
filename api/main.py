@@ -66,28 +66,46 @@ def main():
 
     if args.no_ui:
         print("ℹ️ no-ui 模式：仅模型加载")
+        from taiji.loader import load_model
+        model, tokenizer = load_model(config.model_name, device=config.resolve_device())
+        print(f"✅ 模型已加载: {config.model_name}")
         return
 
     if args.train:
-        print("🚀 训练模式启动...")
-        from taiji.model_ext.data_loader import InstructionDataset, create_dataloader
-        from taiji.model_ext.model_setup import download_and_load_model, setup_model_for_training, get_optimizer, get_scheduler
-        from taiji.model_ext.trainer import Trainer
-        
-        model, tokenizer = download_and_load_model(config)
-        model = setup_model_for_training(model, config)
-        optimizer = get_optimizer(model, config)
-        
+        print("🚀 训练模式启动（原生态极）...")
+        from taiji.train.data_loader import InstructionDataset, create_dataloader
+        from taiji.train.trainer import ModelSelfTrainer
+        from taiji.tokenizer import ModelSelfTokenizer
+
+        tokenizer = ModelSelfTokenizer()
         dataset = InstructionDataset(config.train_file, tokenizer, max_length=config.max_length)
         dataloader = create_dataloader(dataset, batch_size=config.batch_size)
         device = config.resolve_device()
-        model = model.to(device)
-        
-        total_steps = len(dataloader) * config.num_epochs // config.gradient_accumulation_steps
-        scheduler = get_scheduler(optimizer, config, total_steps)
-        
-        trainer = Trainer(model, optimizer, scheduler, config, device)
-        for fraction, desc, loss_history in trainer.train(dataloader):
+
+        from taiji.architecture import ModelSelf, ModelConfig as ArchConfig
+        model_config = ArchConfig(
+            vocab_size=len(tokenizer),
+            hidden_size=config.hidden_size,
+            intermediate_size=config.hidden_size * 4,
+            num_hidden_layers=getattr(config, 'num_hidden_layers', 24),
+            num_attention_heads=getattr(config, 'num_attention_heads', 16),
+            num_key_value_heads=getattr(config, 'num_key_value_heads', 4),
+            max_position_embeddings=config.max_length,
+        )
+        model = ModelSelf(model_config)
+        if config.resume_from_checkpoint:
+            from taiji.loader import load_model as load_ckpt
+            model, _ = load_ckpt(config.resume_from_checkpoint, device=device)
+
+        trainer = ModelSelfTrainer(
+            model, tokenizer,
+            learning_rate=config.learning_rate,
+            gradient_accumulation_steps=config.gradient_accumulation_steps,
+        )
+        for fraction, desc, loss_history, meta in trainer.pretrain(
+            dataset, num_epochs=config.num_epochs, batch_size=config.batch_size,
+            save_dir="./taiji_checkpoints", device=device,
+        ):
             print(f"\r{desc}", end="", flush=True)
         print(f"\n✅ 训练完成！")
         return

@@ -35,8 +35,8 @@ logger = logging.getLogger("Finetune")
 
 CONFIG = {
     # 模型
-    "model_path": "taiji_data/final",
-    "output_dir": "taiji_data/finetuned",
+    "model_path": "taiji_data/taiji_pretrained_1b_stage1/final",
+    "output_dir": "taiji_data/taiji_1b_sft",
 
     # 数据（按优先级排序，混合训练）
     "data_files": [
@@ -174,8 +174,12 @@ def load_data(data_files, eval_ratio=0.01):
 
     random.shuffle(all_samples)
 
+    if len(all_samples) < 2:
+        raise RuntimeError("Need at least 2 finetuning samples after loading data.")
+
     # 分割训练/验证
-    eval_count = max(100, int(len(all_samples) * eval_ratio))
+    eval_count = max(1, int(len(all_samples) * eval_ratio))
+    eval_count = min(eval_count, len(all_samples) - 1)
     eval_samples = all_samples[:eval_count]
     train_samples = all_samples[eval_count:]
 
@@ -215,7 +219,7 @@ def train():
 
     # 加载模型
     logger.info(f"加载模型: {CONFIG['model_path']}")
-    from taiji.loader import load_model
+    from taiji.loader import load_model, save_model
     model, tokenizer = load_model(CONFIG["model_path"], device="cpu")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -241,6 +245,8 @@ def train():
         num_workers=0,
         drop_last=True,
     )
+    if not train_samples:
+        raise RuntimeError("No finetuning samples were loaded. Populate CONFIG['data_files'] before training.")
 
     # 优化器
     optimizer = torch.optim.AdamW(
@@ -306,8 +312,18 @@ def train():
             if step > 0 and step % CONFIG["save_every"] == 0:
                 ckpt_dir = output_dir / f"checkpoint-{step}"
                 ckpt_dir.mkdir(exist_ok=True)
-                torch.save(model.state_dict(), ckpt_dir / "model.pt")
-                tokenizer.save(str(ckpt_dir / "tokenizer"))
+                checkpoint_loss = loss.item() * CONFIG["gradient_accumulation_steps"]
+                save_model(
+                    model,
+                    tokenizer,
+                    str(ckpt_dir),
+                    training_state={
+                        "step": step,
+                        "loss": checkpoint_loss,
+                        "lr": lr,
+                        "phase": "finetune",
+                    },
+                )
                 logger.info(f"Saved checkpoint: {ckpt_dir}")
 
             # 评估
@@ -324,8 +340,16 @@ def train():
                     # 保存最佳模型
                     best_dir = output_dir / "best"
                     best_dir.mkdir(exist_ok=True)
-                    torch.save(model.state_dict(), best_dir / "model.pt")
-                    tokenizer.save(str(best_dir / "tokenizer"))
+                    save_model(
+                        model,
+                        tokenizer,
+                        str(best_dir),
+                        training_state={
+                            "step": step,
+                            "eval_loss": eval_loss,
+                            "phase": "finetune_best",
+                        },
+                    )
                     logger.info(f"New best model: eval_loss={eval_loss:.4f}")
                 else:
                     patience_counter += 1
@@ -347,14 +371,16 @@ def train():
     # 最终保存
     final_dir = output_dir / "final"
     final_dir.mkdir(exist_ok=True)
-    torch.save(model.state_dict(), final_dir / "model.pt")
-    tokenizer.save(str(final_dir / "tokenizer"))
-
-    # 复制 config.json
-    import shutil
-    src_config = Path(CONFIG["model_path"]) / "config.json"
-    if src_config.exists():
-        shutil.copy(src_config, final_dir / "config.json")
+    save_model(
+        model,
+        tokenizer,
+        str(final_dir),
+        training_state={
+            "step": step,
+            "best_eval_loss": best_eval_loss,
+            "phase": "finetune_final",
+        },
+    )
 
     logger.info("=" * 60)
     logger.info(f"训练完成! 最终模型: {final_dir}")

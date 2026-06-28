@@ -33,6 +33,7 @@ dependencies = [
     "langchain>=0.1.0,<1.0.0",
     "langchain-core>=0.1.0,<1.0.0",
     "langchain-community>=0.1.0,<1.0.0",
+    "langchain-openai>=0.1.0,<1.0.0",
     "beautifulsoup4>=4.12.0,<5.0.0",
     "requests>=2.31.0,<3.0.0",
     # Search
@@ -62,3 +63,22 @@ taiji = "desktop.main:main"
 
 [tool.setuptools.packages.find]
 include = ["taiji*", "api*"]
+
+[tool.pytest.ini_options]
+addopts = [
+    "-p",
+    "no:cacheprovider",
+]
+markers = [
+    "slow: long-running integration tests",
+]
+cache_dir = ".taiji_test_tmp/pytest_cache"
+norecursedirs = [
+    ".git",
+    ".pytest*",
+    ".taiji_test_tmp*",
+    "pytest-cache-files-*",
+    "tmp*",
+    ".tmp*",
+    "__pycache__",
+]

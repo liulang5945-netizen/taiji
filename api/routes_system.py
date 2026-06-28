@@ -24,49 +24,40 @@ router = APIRouter()
 
 @router.get("/api/system/hardware")
 def get_system_hardware():
-    """检测系统硬件配置"""
+    """检测系统硬件配置（原生态极）"""
     try:
-        from taiji.model_ext.model_registry import analyze_hardware
-        hw = analyze_hardware()
+        import psutil
+        import torch
 
-        cpu_info = ""
-        gpu_info = ""
-        vram_info = ""
-        ram_info = f"{hw.total_ram_gb:.0f} GB"
+        cpu_count = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+        ram = psutil.virtual_memory()
+        ram_gb = ram.total / (1024 ** 3)
+        avail_ram_gb = ram.available / (1024 ** 3)
 
-        if hw.cpu_cores:
-            cpu_info = f"{hw.cpu_cores} 核"
-        if hasattr(hw, 'cpu_name') and hw.cpu_name:
-            cpu_info = f"{hw.cpu_name} ({cpu_info})" if cpu_info else hw.cpu_name
+        cpu_info = f"{cpu_count} 核"
+        gpu_info = "无"
+        vram_info = "N/A"
+        gpu_backends = ["cpu"]
 
-        if hw.gpu_backends:
-            backends = hw.gpu_backends
-            if hw.has_nvidia_gpu:
-                gpu_info = "NVIDIA GPU"
-                vram_info = f"{hw.vram_gb:.1f} GB" if hw.vram_gb else "N/A"
-            elif hw.has_amd_gpu:
-                gpu_info = "AMD GPU"
-                vram_info = f"{hw.vram_gb:.1f} GB" if hw.vram_gb else "共享内存"
-            else:
-                gpu_info = backends[0] if backends[0] != 'cpu' else "集成显卡"
-                vram_info = f"{hw.vram_gb:.1f} GB" if hw.vram_gb else f"{hw.total_ram_gb * 0.5:.0f} GB (共享)"
-        else:
-            gpu_info = "无"
-            vram_info = "N/A"
-
-        from taiji.model_ext.model_registry import recommend_models
-        recs = recommend_models(hw, top_k=1)
-        recommend_text = recs[0].model.name if recs else "Qwen2.5-7B-Instruct"
+        if torch.cuda.is_available():
+            gpu_info = torch.cuda.get_device_name(0)
+            vram_bytes = torch.cuda.get_device_properties(0).total_mem
+            vram_info = f"{vram_bytes / (1024**3):.1f} GB"
+            gpu_backends = ["cuda"]
+        elif hasattr(torch, 'directml') and torch.directml.is_available():
+            gpu_info = "AMD GPU (DirectML)"
+            vram_info = f"{ram_gb * 0.5:.0f} GB (共享)"
+            gpu_backends = ["directml"]
 
         return {
             "status": "ok",
             "cpu": cpu_info,
-            "ram": ram_info,
+            "ram": f"{ram_gb:.0f} GB",
             "gpu": gpu_info,
             "vram": vram_info,
-            "recommend": recommend_text,
-            "gpu_backends": hw.gpu_backends if hw.gpu_backends else ["cpu"],
-            "available_memory_gb": round(hw.available_memory_gb, 1) if hw.available_memory_gb else hw.total_ram_gb,
+            "recommend": "原生 Taiji 模型（基于 ModelSelf）",
+            "gpu_backends": gpu_backends,
+            "available_memory_gb": round(avail_ram_gb, 1),
         }
     except Exception as e:
         logger.error(f"硬件检测失败: {e}")
@@ -74,7 +65,7 @@ def get_system_hardware():
             "status": "error",
             "message": f"硬件检测失败: {str(e)}",
             "cpu": "", "ram": "", "gpu": "", "vram": "",
-            "recommend": "Qwen2.5-7B-Instruct",
+            "recommend": "原生 Taiji 模型",
         }
 
 

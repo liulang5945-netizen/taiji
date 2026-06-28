@@ -29,7 +29,8 @@ export const useChatStore = defineStore('chat', () => {
   // === Actions ===
 
   /**
-   * 从后端加载所有历史会话
+   * 从后端加载所有历史会话（并行批量加载，避免 N+1）。
+   * 每批最多 6 个并发请求，避免压垮后端。
    */
   async function loadSessions() {
     try {
@@ -37,7 +38,6 @@ export const useChatStore = defineStore('chat', () => {
       if (!res.ok) return
       const list = await res.json()
       if (!Array.isArray(list) || list.length === 0) {
-        // 没有历史会话，标记已加载
         sessionsLoaded.value = true
         return
       }
@@ -45,20 +45,30 @@ export const useChatStore = defineStore('chat', () => {
       // 按 updated_at 降序排列
       list.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
 
-      const loaded = []
-      for (const item of list) {
+      async function _fetchSessionDetail(item) {
         try {
           const detailRes = await authFetch(`${API_BASE}/api/chat/history/${item.session_id}`)
-          if (!detailRes.ok) continue
+          if (!detailRes.ok) return null
           const detail = await detailRes.json()
-          loaded.push({
+          return {
             id: Number(item.session_id) || item.session_id,
             name: detail.name || item.name || '',
             messages: detail.messages || [],
-          })
-        } catch {
-          // 单个会话加载失败，跳过
-          continue
+          }
+        } catch (e) {
+          console.warn('[chatStore] session detail load failed:', e.message)
+          return null
+        }
+      }
+
+      // 分批并行加载，每批最多 6 个并发
+      const BATCH = 6
+      const loaded = []
+      for (let i = 0; i < list.length; i += BATCH) {
+        const batch = list.slice(i, i + BATCH)
+        const results = await Promise.all(batch.map(_fetchSessionDetail))
+        for (const r of results) {
+          if (r) loaded.push(r)
         }
       }
 
@@ -250,7 +260,7 @@ export const useChatStore = defineStore('chat', () => {
         let parsed = null
         try {
           parsed = JSON.parse(data)
-        } catch (_) {}
+        } catch (e) { console.debug('[chatStore] JSON parse failed:', e.message) }
 
         if (parsed && parsed.type) {
           // 结构化 ReAct 事件

@@ -2,15 +2,14 @@
 态极多模态离散 Tokenizer
 ========================
 
-将图像和音频编码为离散 token，与文本 token 共享同一个词表。
-模型可以用统一的 Transformer 同时生成文本、图像、音频。
+将图像和音频编码为离散 token，与文本 token 共享同一个词表。模型可以用统一的 Transformer 同时生成文本、图像、音频。
 
 架构:
-  图像 → VQ-VAE Encoder → 离散 token (codebook 8192)
-  音频 → EnCodec-style Encoder → 离散 token (codebook 4096)
-  文本 → SentencePiece/BPE → 离散 token (已有)
+  图像 -> VQ-VAE Encoder -> 离散 token (codebook 8192)
+  音频 -> EnCodec-style Encoder -> 离散 token (codebook 4096)
+  文本 -> SentencePiece/BPE -> 离散 token (已有)
 
-  所有 token 拼接成统一序列 → Transformer → 输出 token → 各模态 decoder
+  所有 token 拼接成统一序列 -> Transformer -> 输出 token -> 各模态 decoder
 
 参考:
   - DALL-E (图像 token): VQ-VAE + Transformer
@@ -29,10 +28,9 @@ from dataclasses import dataclass
 logger = logging.getLogger("Taiji.Tokenizers")
 
 
-# ═══════════════════════════════════════════════
+# ============================================================================
 # 向量量化层 (VQ)
-# ═══════════════════════════════════════════════
-
+# ============================================================================
 class VectorQuantizer(nn.Module):
     """
     向量量化层 — 将连续向量映射到离散 codebook
@@ -66,7 +64,7 @@ class VectorQuantizer(nn.Module):
         z_perm = z.permute(0, 2, 3, 1) if z.dim() == 4 else z.permute(0, 2, 1)  # [batch, ..., dim]
         flat = z_perm.reshape(-1, self.dim)  # [N, dim]
 
-        # 计算与 codebook 的距离
+        # 计算到 codebook 的距离
         dist = (flat.unsqueeze(1) - self.embedding.weight.unsqueeze(0)) ** 2  # [N, K, dim]
         dist = dist.sum(dim=-1)  # [N, K]
 
@@ -95,39 +93,37 @@ class VectorQuantizer(nn.Module):
         return z_q, indices, vq_loss
 
 
-# ═══════════════════════════════════════════════
+# ============================================================================
 # 图像 VQ-VAE Tokenizer
-# ═══════════════════════════════════════════════
-
+# ============================================================================
 class ImageVQEncoder(nn.Module):
     """
     图像 VQ-VAE 编码器
-
     输入: [batch, 3, 256, 256] 图像
     输出: [batch, 16, 16] 离散 token IDs (256 个 token)
 
-    架构: 4 层下采样卷积 → VQ
+    架构: 4 层下采样卷积 -> VQ
     """
 
     def __init__(self, codebook_size: int = 8192, hidden_dim: int = 256):
         super().__init__()
         self.codebook_size = codebook_size
 
-        # 编码器: 256×256 → 16×16 (4 层下采样, 每层 2x)
+        # 编码器: 256x256 -> 16x16 (4 层下采样, 每层 2x)
         self.encoder = nn.Sequential(
-            # 256→128
+            # 256->128
             nn.Conv2d(3, hidden_dim // 4, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim // 4),
             nn.SiLU(),
-            # 128→64
+            # 128->64
             nn.Conv2d(hidden_dim // 4, hidden_dim // 2, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim // 2),
             nn.SiLU(),
-            # 64→32
+            # 64->32
             nn.Conv2d(hidden_dim // 2, hidden_dim, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim),
             nn.SiLU(),
-            # 32→16
+            # 32->16
             nn.Conv2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim),
             nn.SiLU(),
@@ -156,7 +152,6 @@ class ImageVQEncoder(nn.Module):
 class ImageVQDecoder(nn.Module):
     """
     图像 VQ-VAE 解码器
-
     输入: [batch, hidden_dim, 16, 16] 量化特征 (或 codebook IDs)
     输出: [batch, 3, 256, 256] 重建图像
     """
@@ -166,19 +161,19 @@ class ImageVQDecoder(nn.Module):
         self.embedding = nn.Embedding(codebook_size, hidden_dim)
 
         self.decoder = nn.Sequential(
-            # 16→32
+            # 16->32
             nn.ConvTranspose2d(hidden_dim, hidden_dim, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim),
             nn.SiLU(),
-            # 32→64
+            # 32->64
             nn.ConvTranspose2d(hidden_dim, hidden_dim // 2, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim // 2),
             nn.SiLU(),
-            # 64→128
+            # 64->128
             nn.ConvTranspose2d(hidden_dim // 2, hidden_dim // 4, 4, stride=2, padding=1),
             nn.GroupNorm(8, hidden_dim // 4),
             nn.SiLU(),
-            # 128→256
+            # 128->256
             nn.ConvTranspose2d(hidden_dim // 4, 3, 4, stride=2, padding=1),
             nn.Tanh(),
         )
@@ -206,7 +201,7 @@ class ImageTokenizer:
 
     用法:
         tokenizer = ImageTokenizer("path/to/image_vq.pt")
-        tokens = tokenizer.encode(image)        # [batch, 256] (16×16 展平)
+        tokens = tokenizer.encode(image)        # [batch, 256] (16x16 展平)
         image = tokenizer.decode(tokens)         # [batch, 3, 256, 256]
     """
 
@@ -214,7 +209,7 @@ class ImageTokenizer:
                  codebook_size: int = 8192, hidden_dim: int = 256):
         self.device = device
         self.codebook_size = codebook_size
-        self.grid_size = 16  # 16×16 = 256 tokens per image
+        self.grid_size = 16  # 16x16 = 256 tokens per image
 
         self.encoder = ImageVQEncoder(codebook_size, hidden_dim).to(device)
         self.decoder = ImageVQDecoder(codebook_size, hidden_dim).to(device)
@@ -228,7 +223,7 @@ class ImageTokenizer:
     @torch.no_grad()
     def encode(self, image: torch.Tensor) -> torch.Tensor:
         """
-        图像 → 离散 token IDs
+        图像 -> 离散 token IDs
 
         Args:
             image: [batch, 3, 256, 256] 像素范围 [0, 1] 或 [-1, 1]
@@ -241,13 +236,13 @@ class ImageTokenizer:
             image = image / 127.5 - 1.0
 
         _, indices, _ = self.encoder(image.to(self.device))
-        # 展平 16×16 → 256
+        # 展平 16x16 -> 256
         return indices.reshape(image.shape[0], -1)
 
     @torch.no_grad()
     def decode(self, indices: torch.Tensor) -> torch.Tensor:
         """
-        离散 token IDs → 图像
+        离散 token IDs -> 图像
 
         Args:
             indices: [batch, 256] 或 [batch, 16, 16] 离散 token IDs
@@ -278,10 +273,9 @@ class ImageTokenizer:
         logger.info(f"ImageTokenizer 加载: {path}")
 
 
-# ═══════════════════════════════════════════════
+# ============================================================================
 # 音频 Tokenizer (EnCodec-style)
-# ═══════════════════════════════════════════════
-
+# ============================================================================
 class AudioEncoder(nn.Module):
     """
     音频编码器 (1D 卷积)
@@ -292,7 +286,7 @@ class AudioEncoder(nn.Module):
 
     def __init__(self, hidden_dim: int = 128):
         super().__init__()
-        # 下采样: 64000 → 50 (约 1280x 压缩)
+        # 下采样: 64000 -> 50 (约 1280x 压缩)
         self.encoder = nn.Sequential(
             nn.Conv1d(1, hidden_dim // 4, 7, stride=2, padding=3),
             nn.GroupNorm(8, hidden_dim // 4),
@@ -404,7 +398,7 @@ class AudioTokenizer:
     @torch.no_grad()
     def encode(self, audio: torch.Tensor) -> torch.Tensor:
         """
-        音频波形 → 离散 token IDs
+        音频波形 -> 离散 token IDs
 
         Args:
             audio: [batch, 1, samples] 波形 (16kHz)
@@ -428,7 +422,7 @@ class AudioTokenizer:
     @torch.no_grad()
     def decode(self, indices: torch.Tensor) -> torch.Tensor:
         """
-        离散 token IDs → 音频波形
+        离散 token IDs -> 音频波形
 
         Args:
             indices: [batch, max_frames] 离散 token IDs
@@ -458,10 +452,9 @@ class AudioTokenizer:
         logger.info(f"AudioTokenizer 加载: {path}")
 
 
-# ═══════════════════════════════════════════════
+# ============================================================================
 # 统一多模态 Token 管理器
-# ═══════════════════════════════════════════════
-
+# ============================================================================
 @dataclass
 class MultimodalInput:
     """多模态统一输入"""
@@ -469,7 +462,6 @@ class MultimodalInput:
     image_ids: torch.Tensor = None        # [batch, 256] 图像 token IDs
     audio_ids: torch.Tensor = None        # [batch, frames] 音频 token IDs
     attention_mask: torch.Tensor = None   # [batch, total_len] 注意力掩码
-
 
 class MultimodalTokenManager:
     """
@@ -482,22 +474,25 @@ class MultimodalTokenManager:
     4. 将图像/音频 token 偏移到词表对应区域
 
     用法:
-        manager = MultimodalTokenManager(base_vocab_size=152936)
+        manager = MultimodalTokenManager()
 
-        # 编码: 图像 → token IDs (偏移到词表中的图像区域)
-        image_tokens = manager.encode_image(raw_indices)  # 0~8191 → 152936~161127
+        # 编码: 图像 -> token IDs (偏移到词表中的图像区域)
+        image_tokens = manager.encode_image(raw_indices)  # 0~8191 -> 1000~9191
 
-        # 拼接: 文本 + 图像 + 音频 → 统一序列
+        # 拼接: 文本 + 图像 + 音频 -> 统一序列
         unified = manager.merge(text_ids, image_tokens, audio_tokens)
 
         # 分离: 从模型输出中提取各模态
         text_out, image_out, audio_out = manager.split(logits)
     """
 
-    def __init__(self, base_vocab_size: int = 152936):
-        from taiji.config import MULTIMODAL_TOKENS, MM_CONTROL_TOKENS
+    def __init__(self):
+        from taiji.config import (
+            MM_CONTROL_TOKENS,
+            MULTIMODAL_TOKENS,
+            MULTIMODAL_VOCAB_SIZE,
+        )
 
-        self.base_vocab = base_vocab_size
         self.image_base = MULTIMODAL_TOKENS["image_token_base"]
         self.audio_base = MULTIMODAL_TOKENS["audio_token_base"]
         self.image_codebook = MULTIMODAL_TOKENS["image_codebook_size"]
@@ -509,11 +504,13 @@ class MultimodalTokenManager:
         self.AUDIO_START = MM_CONTROL_TOKENS["audio_start"]
         self.AUDIO_END = MM_CONTROL_TOKENS["audio_end"]
 
-        # 总词表大小
-        self.total_vocab = (
-            base_vocab_size + self.image_codebook + self.audio_codebook
+        # Keep both the full model vocab and the end of the reserved multimodal span.
+        self.reserved_vocab_end = (
+            self.audio_base
+            + self.audio_codebook
             + MULTIMODAL_TOKENS["mm_control_size"]
         )
+        self.total_vocab = MULTIMODAL_VOCAB_SIZE
 
     def encode_image(self, raw_indices: torch.Tensor) -> torch.Tensor:
         """
@@ -523,7 +520,7 @@ class MultimodalTokenManager:
             raw_indices: [batch, 256] 值域 0~8191
 
         Returns:
-            offset_indices: [batch, 256] 值域 152936~161127
+            offset_indices: [batch, 256] 值域 1000~9191
         """
         return raw_indices + self.image_base
 

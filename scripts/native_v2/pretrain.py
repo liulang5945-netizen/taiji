@@ -16,7 +16,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 
 DEFAULT_MODEL_CONFIG = {
@@ -187,6 +187,7 @@ class TaijiBackbone(nn.Module):
 
 
 class NativeDataset(Dataset):
+    """In-memory dataset for small datasets."""
     def __init__(self, data_dir: str, sp, contract: dict, max_length: int):
         self.sp = sp
         self.text_offset = int(contract["text_offset"])
@@ -237,6 +238,75 @@ class NativeDataset(Dataset):
         return {"input_ids": input_ids, "labels": labels}
 
 
+class StreamingNativeDataset(IterableDataset):
+    """Streaming dataset that reads JSONL files on-the-fly without loading all into memory."""
+    def __init__(self, data_dir: str, sp, contract: dict, max_length: int, buffer_size: int = 10000):
+        self.data_dir = data_dir
+        self.sp = sp
+        self.text_offset = int(contract["text_offset"])
+        self.pad_id = int(contract["special_tokens"]["<pad>"])
+        self.max_length = max_length
+        self.buffer_size = buffer_size
+
+    def _get_shard_files(self):
+        """Get all JSONL files in data_dir."""
+        files = []
+        for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
+            for path in glob.glob(os.path.join(self.data_dir, pattern), recursive=True):
+                if not _should_skip_data_path(path):
+                    files.append(path)
+        random.shuffle(files)
+        return files
+
+    def _extract(self, line: str) -> str:
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            return line
+        if isinstance(obj, dict):
+            texts = []
+            for key in ("text", "content", "output", "instruction", "input", "question", "answer"):
+                if isinstance(obj.get(key), str):
+                    texts.append(obj[key])
+            if isinstance(obj.get("messages"), list):
+                texts.extend(m.get("content", "") for m in obj["messages"] if isinstance(m, dict))
+            return " ".join(t for t in texts if t)
+        return line
+
+    def __iter__(self):
+        """Iterate over data with shuffle buffer."""
+        buffer = []
+        for shard_file in self._get_shard_files():
+            try:
+                with open(shard_file, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        line = line.strip()
+                        if len(line) <= 40:
+                            continue
+                        text = self._extract(line)
+                        ids = [self.text_offset + i for i in self.sp.EncodeAsIds(text)]
+                        ids = ids[:self.max_length]
+                        ids += [self.pad_id] * (self.max_length - len(ids))
+                        input_ids = torch.tensor(ids, dtype=torch.long)
+                        labels = input_ids.clone()
+                        labels[labels == self.pad_id] = -100
+                        sample = {"input_ids": input_ids, "labels": labels}
+
+                        if len(buffer) < self.buffer_size:
+                            buffer.append(sample)
+                        else:
+                            idx = random.randint(0, len(buffer) - 1)
+                            yield buffer[idx]
+                            buffer[idx] = sample
+            except OSError:
+                continue
+
+        # Yield remaining samples in buffer
+        random.shuffle(buffer)
+        for sample in buffer:
+            yield sample
+
+
 def lr_at(step: int, warmup: int, max_steps: int, max_lr: float, min_lr: float) -> float:
     if step < warmup:
         return max_lr * max(1, step) / max(1, warmup)
@@ -244,16 +314,157 @@ def lr_at(step: int, warmup: int, max_steps: int, max_lr: float, min_lr: float) 
     return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(math.pi * progress))
 
 
-def save_checkpoint(model, cfg, contract, tokenizer_path, path, step, loss):
+def save_checkpoint(model, cfg, contract, tokenizer_path, path, step, loss, tokens_seen, optimizer=None, scaler=None):
+    """Save full checkpoint including model, optimizer, scaler, and training state."""
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), path / "model.pt")
+    if optimizer is not None:
+        torch.save(optimizer.state_dict(), path / "optimizer.pt")
+    if scaler is not None:
+        torch.save(scaler.state_dict(), path / "scaler.pt")
+    # Save training state
+    state = {"step": step, "loss": loss, "tokens_seen": tokens_seen}
+    (path / "training_state.json").write_text(json.dumps(state), encoding="utf-8")
     (path / "config.json").write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     (path / "tokenizer_contract.json").write_text(json.dumps(contract, indent=2, ensure_ascii=False), encoding="utf-8")
     import shutil
-
     shutil.copy2(tokenizer_path, path / "sentencepiece.model")
-    print(f"saved={path} step={step} loss={loss:.4f}")
+    print(f"saved={path} step={step} loss={loss:.4f} tokens_seen={tokens_seen:,}")
+
+
+def load_checkpoint(checkpoint_dir: str, model, optimizer=None, scaler=None):
+    """Load checkpoint and resume training state."""
+    checkpoint_dir = Path(checkpoint_dir)
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_dir}")
+
+    # Load model
+    model_path = checkpoint_dir / "model.pt"
+    if model_path.exists():
+        model.load_state_dict(torch.load(model_path, weights_only=True))
+        print(f"Loaded model from {model_path}")
+
+    # Load optimizer
+    if optimizer is not None:
+        opt_path = checkpoint_dir / "optimizer.pt"
+        if opt_path.exists():
+            optimizer.load_state_dict(torch.load(opt_path, weights_only=True))
+            print(f"Loaded optimizer from {opt_path}")
+
+    # Load scaler
+    if scaler is not None:
+        scaler_path = checkpoint_dir / "scaler.pt"
+        if scaler_path.exists():
+            scaler.load_state_dict(torch.load(scaler_path, weights_only=True))
+            print(f"Loaded scaler from {scaler_path}")
+
+    # Load training state
+    state_path = checkpoint_dir / "training_state.json"
+    if state_path.exists():
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        print(f"Resumed from step={state['step']} tokens_seen={state['tokens_seen']:,}")
+        return state
+
+    return {"step": 0, "loss": 0.0, "tokens_seen": 0}
+
+
+def cleanup_checkpoints(output_dir: str, keep_last: int = 3):
+    """Remove old checkpoints, keeping only last N + best + final."""
+    output_dir = Path(output_dir)
+    checkpoints = sorted(output_dir.glob("checkpoint-*"), key=lambda p: int(p.name.split("-")[1]))
+
+    if len(checkpoints) <= keep_last:
+        return
+
+    # Find best checkpoint (lowest loss)
+    best_loss = float("inf")
+    best_ckpt = None
+    for ckpt in checkpoints:
+        state_path = ckpt / "training_state.json"
+        if state_path.exists():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if state.get("loss", float("inf")) < best_loss:
+                best_loss = state["loss"]
+                best_ckpt = ckpt
+
+    # Keep last N + best + final
+    to_keep = set(checkpoints[-keep_last:])
+    if best_ckpt:
+        to_keep.add(best_ckpt)
+    final = output_dir / "final"
+    if final.exists():
+        to_keep.add(final)
+
+    for ckpt in checkpoints:
+        if ckpt not in to_keep:
+            import shutil
+            shutil.rmtree(ckpt)
+            print(f"Removed old checkpoint: {ckpt.name}")
+
+
+def load_holdout_eval(holdout_dir: str, sp, contract: dict, max_length: int, max_samples: int = 100):
+    """Load holdout evaluation data."""
+    holdout_dir = Path(holdout_dir)
+    if not holdout_dir.exists():
+        return {}
+
+    text_offset = int(contract["text_offset"])
+    pad_id = int(contract["special_tokens"]["<pad>"])
+
+    holdout_data = {}
+    for holdout_file in holdout_dir.glob("*.jsonl"):
+        category = holdout_file.stem  # e.g., holdout_zh
+        samples = []
+        with open(holdout_file, "r", encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                if i >= max_samples:
+                    break
+                try:
+                    obj = json.loads(line)
+                    text = obj.get("text", "")
+                    if text:
+                        ids = [text_offset + i for i in sp.EncodeAsIds(text)]
+                        ids = ids[:max_length]
+                        ids += [pad_id] * (max_length - len(ids))
+                        input_ids = torch.tensor(ids, dtype=torch.long)
+                        labels = input_ids.clone()
+                        labels[labels == pad_id] = -100
+                        samples.append({"input_ids": input_ids, "labels": labels})
+                except:
+                    continue
+        if samples:
+            holdout_data[category] = samples
+            print(f"Loaded {len(samples)} holdout samples for {category}")
+
+    return holdout_data
+
+
+def evaluate_holdout(model, holdout_data: dict, device, use_amp: bool, amp_dtype):
+    """Evaluate model on holdout data."""
+    if not holdout_data:
+        return {}
+
+    model.eval()
+    results = {}
+    with torch.no_grad():
+        for category, samples in holdout_data.items():
+            total_loss = 0.0
+            for sample in samples:
+                input_ids = sample["input_ids"].unsqueeze(0).to(device)
+                labels = sample["labels"].unsqueeze(0).to(device)
+                if use_amp:
+                    with torch.amp.autocast("cuda", dtype=amp_dtype):
+                        loss = model(input_ids, labels)["loss"]
+                else:
+                    loss = model(input_ids, labels)["loss"]
+                total_loss += loss.item()
+            avg_loss = total_loss / len(samples)
+            results[category] = avg_loss
+            print(f"  holdout {category}: loss={avg_loss:.4f}")
+
+    model.train()
+    return results
 
 
 def train_config(cfg_all: dict[str, Any]) -> None:
@@ -279,13 +490,23 @@ def train_config(cfg_all: dict[str, Any]) -> None:
     params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"device={device} params={params:.1f}M sp_vocab={sp.GetPieceSize()}")
 
-    dataset = NativeDataset(train_cfg["data_dir"], sp, contract, train_cfg["max_length"])
-    if len(dataset) == 0:
-        raise RuntimeError(f"No usable training lines found in data_dir={train_cfg['data_dir']}")
+    # Choose dataset based on config
+    use_streaming = train_cfg.get("use_streaming", False)
+    if use_streaming:
+        dataset = StreamingNativeDataset(
+            train_cfg["data_dir"], sp, contract, train_cfg["max_length"],
+            buffer_size=train_cfg.get("streaming_buffer", 10000)
+        )
+        print("Using streaming dataset")
+    else:
+        dataset = NativeDataset(train_cfg["data_dir"], sp, contract, train_cfg["max_length"])
+        if len(dataset) == 0:
+            raise RuntimeError(f"No usable training lines found in data_dir={train_cfg['data_dir']}")
+
     loader = DataLoader(
         dataset,
         batch_size=train_cfg["batch_size"],
-        shuffle=True,
+        shuffle=not use_streaming,
         num_workers=train_cfg.get("num_workers", 2),
         pin_memory=True,
         drop_last=True,
@@ -300,20 +521,41 @@ def train_config(cfg_all: dict[str, Any]) -> None:
     amp_dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
     scaler = torch.amp.GradScaler("cuda") if use_amp and amp_dtype == torch.float16 else None
 
+    # Resume from checkpoint if specified
+    resume_from = train_cfg.get("resume_from_checkpoint")
+    step = 0
+    tokens_seen = 0
+    last_loss = 0.0
+    if resume_from:
+        state = load_checkpoint(resume_from, model, opt, scaler)
+        step = state.get("step", 0)
+        tokens_seen = state.get("tokens_seen", 0)
+        last_loss = state.get("loss", 0.0)
+
+    # Load holdout eval data
+    holdout_dir = train_cfg.get("holdout_dir")
+    holdout_data = {}
+    if holdout_dir:
+        holdout_data = load_holdout_eval(holdout_dir, sp, contract, train_cfg["max_length"])
+
     max_steps = train_cfg["max_steps"]
     accum = train_cfg["gradient_accumulation_steps"]
+    tokens_per_step = train_cfg["batch_size"] * accum * train_cfg["max_length"]
     output = Path(train_cfg["output_dir"])
     output.mkdir(parents=True, exist_ok=True)
-    step = 0
     micro = 0
     running = 0.0
-    last_loss = 0.0
     start = time.time()
     model.train()
     opt.zero_grad(set_to_none=True)
 
+    print(f"Starting from step={step} tokens_seen={tokens_seen:,} max_steps={max_steps}")
+
     while step < max_steps:
         for batch in loader:
+            if step >= max_steps:
+                break
+
             input_ids = batch["input_ids"].to(device)
             labels = batch["labels"].to(device)
             if use_amp:
@@ -344,16 +586,31 @@ def train_config(cfg_all: dict[str, Any]) -> None:
                 opt.step()
             opt.zero_grad(set_to_none=True)
             step += 1
+            tokens_seen += tokens_per_step
 
             if step % train_cfg["log_every"] == 0:
                 elapsed = max(1e-6, time.time() - start)
-                print(f"step={step}/{max_steps} loss={running / train_cfg['log_every']:.4f} lr={lr:.2e} hours={elapsed/3600:.2f}")
+                print(f"step={step}/{max_steps} loss={running / train_cfg['log_every']:.4f} lr={lr:.2e} tokens_seen={tokens_seen:,} hours={elapsed/3600:.2f}")
                 running = 0.0
+
+                # Holdout eval every log_every steps
+                if holdout_data:
+                    eval_results = evaluate_holdout(model, holdout_data, device, use_amp, amp_dtype)
+
             if step % train_cfg["save_every"] == 0:
-                save_checkpoint(model, model_cfg, contract, train_cfg["tokenizer_path"], output / f"checkpoint-{step}", step, last_loss)
-            if step >= max_steps:
-                break
-    save_checkpoint(model, model_cfg, contract, train_cfg["tokenizer_path"], output / "final", step, last_loss)
+                save_checkpoint(
+                    model, model_cfg, contract, train_cfg["tokenizer_path"],
+                    output / f"checkpoint-{step}", step, last_loss, tokens_seen,
+                    optimizer=opt, scaler=scaler
+                )
+                cleanup_checkpoints(str(output), keep_last=train_cfg.get("keep_last_checkpoints", 3))
+
+    save_checkpoint(
+        model, model_cfg, contract, train_cfg["tokenizer_path"],
+        output / "final", step, last_loss, tokens_seen,
+        optimizer=opt, scaler=scaler
+    )
+    print(f"Training complete. Total tokens_seen={tokens_seen:,}")
 
 
 def train(config_path: str) -> None:
@@ -402,6 +659,18 @@ def build_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         if value is not None:
             train_cfg[key] = value
 
+    # New parameters for engineering capabilities
+    if args.resume_from_checkpoint:
+        train_cfg["resume_from_checkpoint"] = args.resume_from_checkpoint
+    if args.use_streaming:
+        train_cfg["use_streaming"] = True
+    if args.streaming_buffer:
+        train_cfg["streaming_buffer"] = args.streaming_buffer
+    if args.holdout_dir:
+        train_cfg["holdout_dir"] = args.holdout_dir
+    if args.keep_last_checkpoints:
+        train_cfg["keep_last_checkpoints"] = args.keep_last_checkpoints
+
     return {"model": model_cfg, "training": train_cfg}
 
 
@@ -424,6 +693,11 @@ if __name__ == "__main__":
     parser.add_argument("--log_every", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--resume_from_checkpoint", default=None, help="Path to checkpoint to resume from")
+    parser.add_argument("--use_streaming", action="store_true", help="Use streaming dataset (don't load all into memory)")
+    parser.add_argument("--streaming_buffer", type=int, default=10000, help="Streaming shuffle buffer size")
+    parser.add_argument("--holdout_dir", default=None, help="Directory containing holdout eval JSONL files")
+    parser.add_argument("--keep_last_checkpoints", type=int, default=3, help="Number of recent checkpoints to keep")
     args = parser.parse_args()
     if args.config:
         train(args.config)

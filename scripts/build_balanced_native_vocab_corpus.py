@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Build a quota-balanced corpus for Taiji native tokenizer training."""
 
 from __future__ import annotations
@@ -75,21 +75,21 @@ SKIP_SUFFIXES = {
 }
 
 TAIJI_SPECIAL_LINES = [
-    "态极是一个本地运行的 AI 生命体，优先保护用户隐私，数据不出本机。",
-    "态极通过感知、记忆、规划、工具调用和反思来完成任务。",
-    "<think>我需要先理解目标，再选择合适的工具，并验证结果。</think>",
-    "<inner_voice>保持简洁、诚实、可执行。</inner_voice>",
-    "<reflect><cause>失败原因是参数不完整</cause><correct>下次先检查 schema 和输入路径</correct></reflect>",
-    "<plan><goal>完成用户目标</goal><step>确认上下文</step><step>执行操作</step><step>验证结果</step></plan>",
-    '<tool_call>{"name":"search","args":{"query":"态极 训练 数据 审计"}}</tool_call>',
-    "<tool_result>工具返回了可验证的信息，需要交叉检查来源。</tool_result>",
-    "<final_answer>我已经完成检查，并说明剩余风险。</final_answer>",
-    "<observe>屏幕显示训练任务正在运行，日志持续刷新。</observe>",
-    "<screen>用户正在 JupyterLab 中查看 AutoDL 训练终端。</screen>",
-    "<mem_read>读取与当前训练计划相关的长期记忆。</mem_read>",
-    "<mem_write>记录词表训练采用了 native-v2 contract。</mem_write>",
-    "<image>这是一张训练日志截图。</image>",
-    "<audio>用户语音询问训练是否正常。</audio>",
+    "?????????? AI ????????????????????",
+    "??????????????????????????",
+    "<think>????????????????????????</think>",
+    "<inner_voice>????????????</inner_voice>",
+    "<reflect><cause>??????????</cause><correct>????? schema ?????</correct></reflect>",
+    "<plan><goal>??????</goal><step>?????</step><step>????</step><step>????</step></plan>",
+    '<tool_call>{"name":"search","args":{"query":"?? ?? ?? ??"}}</tool_call>',
+    "<tool_result>?????????????????????</tool_result>",
+    "<final_answer>?????????????????</final_answer>",
+    "<observe>????????????????????</observe>",
+    "<screen>???? JupyterLab ??? AutoDL ?????</screen>",
+    "<mem_read>?????????????????</mem_read>",
+    "<mem_write>????????? native-v2 contract?</mem_write>",
+    "<image>???????????</image>",
+    "<audio>?????????????</audio>",
     "The native Taiji tokenizer separates control tokens, multimodal tokens, and text tokens.",
 ]
 
@@ -291,10 +291,13 @@ def normalized_sources_by_category(normalized_dir: Path) -> dict[str, list[Path]
     sources: dict[str, list[Path]] = {name: [] for name in DEFAULT_RATIOS}
     if not normalized_dir.exists():
         return sources
-    for path in sorted(normalized_dir.glob("*.jsonl")):
+    # 递归查找所有 JSONL 文件
+    for path in sorted(normalized_dir.rglob("*.jsonl")):
         lower_name = path.name.lower()
+        # 也检查父目录名称
+        parent_name = path.parent.name.lower()
         for category, hints in NORMALIZED_CATEGORY_HINTS.items():
-            if any(hint in lower_name for hint in hints):
+            if any(hint in lower_name or hint in parent_name for hint in hints):
                 sources[category].append(path)
                 break
     return sources
@@ -304,6 +307,10 @@ def project_files(paths: list[Path], suffixes: set[str]) -> list[Path]:
     files: list[Path] = []
     for root in paths:
         if not root.exists():
+            continue
+        if root.is_file():
+            if root.suffix.lower() in suffixes and not should_skip_path(root):
+                files.append(root)
             continue
         for path in root.rglob("*"):
             if path.is_file() and path.suffix.lower() in suffixes and not should_skip_path(path):
@@ -338,9 +345,10 @@ def fill_category_from_files(
     seen: set[str],
     min_chars: int,
     max_record_chars: int,
+    unlimited: bool = False,
 ) -> None:
     for path in paths:
-        if report.written_chars >= report.quota_chars:
+        if not unlimited and report.written_chars >= report.quota_chars:
             break
         if should_skip_path(path):
             continue
@@ -348,7 +356,7 @@ def fill_category_from_files(
         try:
             iterator = iter_jsonl_texts(path) if path.suffix.lower() == ".jsonl" else iter_plain_texts(path)
             for raw_text in iterator:
-                if report.written_chars >= report.quota_chars:
+                if not unlimited and report.written_chars >= report.quota_chars:
                     break
                 text = clean_text(raw_text, min_chars=min_chars, max_chars=max_record_chars)
                 if not text:
@@ -420,6 +428,7 @@ def build_balanced_corpus(args: argparse.Namespace) -> dict[str, Any]:
 
     seen: set[str] = set()
     with output.open("w", encoding="utf-8", newline="\n") as handle:
+        # 中文、英文、代码、数学：使用所有可用数据（不限制配额）
         for category in ("zh", "en", "code", "math"):
             fill_category_from_files(
                 handle=handle,
@@ -428,8 +437,10 @@ def build_balanced_corpus(args: argparse.Namespace) -> dict[str, Any]:
                 seen=seen,
                 min_chars=args.min_text_chars,
                 max_record_chars=args.max_record_chars,
+                unlimited=True,
             )
 
+        # 技术文档：使用所有可用数据（不限制配额）
         fill_category_from_files(
             handle=handle,
             report=reports["tech"],
@@ -437,8 +448,10 @@ def build_balanced_corpus(args: argparse.Namespace) -> dict[str, Any]:
             seen=seen,
             min_chars=args.min_text_chars,
             max_record_chars=args.max_record_chars,
+            unlimited=True,
         )
 
+        # 态极特殊：使用所有可用数据（不限制配额）
         fill_taiji_seed_lines(
             handle=handle,
             report=reports["taiji_special"],
@@ -453,6 +466,7 @@ def build_balanced_corpus(args: argparse.Namespace) -> dict[str, Any]:
             seen=seen,
             min_chars=args.min_text_chars,
             max_record_chars=args.max_record_chars,
+            unlimited=True,
         )
 
     result = {
@@ -518,3 +532,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

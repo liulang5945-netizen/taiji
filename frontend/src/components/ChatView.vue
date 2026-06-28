@@ -139,6 +139,7 @@ import { useChatStore } from '@/stores/chatStore.js'
 import { useAppStore } from '@/stores/appStore.js'
 import { useRuntimeStore } from '@/stores/runtimeStore.js'
 import { useMarkdown } from '@/composables/useMarkdown.js'
+import { authFetch } from '@/composables/apiClient.js'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -204,7 +205,7 @@ async function onImageSelect(e) {
   const formData = new FormData()
   formData.append('file', file)
   try {
-    const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+    const resp = await authFetch('/api/taiji/upload', { method: 'POST', body: formData })
     if (resp.ok) {
       const data = await resp.json()
       chatStore.chatInput += `[图片: ${data.filename}] `
@@ -212,7 +213,8 @@ async function onImageSelect(e) {
     } else {
       toast('图片上传失败', 'error')
     }
-  } catch {
+  } catch (e) {
+    console.warn('[ChatView] image upload failed:', e.message)
     toast('图片上传失败', 'error')
   }
   e.target.value = ''
@@ -225,7 +227,7 @@ async function onVideoSelect(e) {
   const formData = new FormData()
   formData.append('file', file)
   try {
-    const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+    const resp = await authFetch('/api/taiji/upload', { method: 'POST', body: formData })
     if (resp.ok) {
       const data = await resp.json()
       chatStore.chatInput += `[视频: ${data.filename}] `
@@ -233,7 +235,8 @@ async function onVideoSelect(e) {
     } else {
       toast('视频上传失败', 'error')
     }
-  } catch {
+  } catch (e) {
+    console.warn('[ChatView] video upload failed:', e.message)
     toast('视频上传失败', 'error')
   }
   e.target.value = ''
@@ -247,12 +250,12 @@ async function onFileSelect(e) {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const resp = await fetch('/api/taiji/upload', { method: 'POST', body: formData })
+      const resp = await authFetch('/api/taiji/upload', { method: 'POST', body: formData })
       if (resp.ok) {
         const data = await resp.json()
         chatStore.chatInput += `[文件: ${data.filename}] `
       }
-    } catch {}
+    } catch (e) { console.warn('[ChatView] file upload failed:', e.message) }
   }
   toast(`已上传 ${files.length} 个文件`, 'success')
   e.target.value = ''
@@ -265,7 +268,8 @@ async function toggleCamera() {
     // TODO: 实现拍照/录像逻辑
     toast('摄像头功能开发中', 'info')
     stream.getTracks().forEach(t => t.stop())
-  } catch {
+  } catch (e) {
+    console.warn('[ChatView] camera access denied:', e.message)
     toast('无法访问摄像头', 'error')
   }
 }

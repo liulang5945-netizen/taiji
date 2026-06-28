@@ -7,6 +7,7 @@
   "ranges": {
     "control": [0, 3],
     "taiji_special": [4, 999],
+    "tool_names": [190, 939],
     "image": [1000, 9191],
     "audio": [9192, 13287],
     "multimodal_control": [13288, 13387],
@@ -118,6 +119,10 @@
       "start": 72,
       "count": 28
     }
+  },
+  "tool_tokens": {
+    "start": 190,
+    "count": 750
   },
   "multimodal": {
     "image": {

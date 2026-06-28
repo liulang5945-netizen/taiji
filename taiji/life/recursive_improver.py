@@ -429,7 +429,7 @@ class RecursiveImprover:
                 "description": f"增加专用预测头以深耕特定领域",
             }
         elif direction == "multimodal":
-            # 多模态：扩展词表 + 增加视觉/音频 tokenizer
+            # native-v2 已预留多模态 token 区间；此阶段应激活对齐能力，而不是再扩词表
             from taiji.config import MULTIMODAL_TOKENS, MULTIMODAL_VOCAB_SIZE
             return {
                 "type": "multimodal",
@@ -437,9 +437,8 @@ class RecursiveImprover:
                 "num_layers": current_layers,
                 "intermediate_size": int(current_hidden * 5.4),
                 "num_attention_heads": current_info.get("num_attention_heads", 14),
-                "vocab_expansion": {
-                    "old_vocab": current_info.get("vocab_size", 152936),
-                    "new_vocab": MULTIMODAL_VOCAB_SIZE,
+                "multimodal_contract": {
+                    "tokenizer_contract_vocab": MULTIMODAL_VOCAB_SIZE,
                     "image_codebook_size": MULTIMODAL_TOKENS["image_codebook_size"],
                     "audio_codebook_size": MULTIMODAL_TOKENS["audio_codebook_size"],
                     "image_token_base": MULTIMODAL_TOKENS["image_token_base"],
@@ -449,7 +448,10 @@ class RecursiveImprover:
                     "image": {"type": "VQ-VAE", "codebook_size": 8192, "grid_size": 16},
                     "audio": {"type": "EnCodec", "codebook_size": 4096, "max_frames": 64},
                 },
-                "description": f"扩展词表 {current_info.get('vocab_size', 152936)} → {MULTIMODAL_VOCAB_SIZE}，增加视觉/音频处理能力",
+                "description": (
+                    f"复用已预留的多模态 token 区间（总词表 {MULTIMODAL_VOCAB_SIZE}），"
+                    "增加视觉/音频编码与对齐能力"
+                ),
             }
         else:  # restructure
             return {

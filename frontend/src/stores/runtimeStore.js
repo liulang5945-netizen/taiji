@@ -14,7 +14,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
       const message = event.detail?.message || 'JWT token 缺失或已过期，请重新登录'
       try {
         useRuntimeStore().reportAuthExpired(message)
-      } catch (_) {}
+      } catch (e) { console.debug('[runtimeStore] auth-expired handler error:', e.message) }
     })
   }
 
@@ -383,7 +383,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     try {
       const data = await refreshRuntime()
       return data.memory || null
-    } catch (_) {}
+    } catch (e) { console.debug('[runtimeStore] refreshMemory failed:', e.message) }
     return null
   }
 
@@ -400,7 +400,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     try {
       const data = await refreshRuntime()
       return data.life || null
-    } catch (_) {}
+    } catch (e) { console.debug('[runtimeStore] refreshLife failed:', e.message) }
     return null
   }
 

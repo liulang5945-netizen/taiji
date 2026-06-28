@@ -40,7 +40,7 @@ class Embryo:
         "working_memory.py", "user_profile.py", "planner.py",
         "reflector.py", "perception.py", "vision_encoder.py",
         "voice_interface.py", "data_generator.py", "loader.py",
-        "trainer.py", "native_agent.py", "taiji_multimodal.py",
+        "trainer.py", "native_agent.py",
     ]
 
     # 需要导出的数据目录

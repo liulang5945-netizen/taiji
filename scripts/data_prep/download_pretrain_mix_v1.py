@@ -40,12 +40,12 @@ SOURCES: dict[str, SourceSpec] = {
     "fineweb2_en": SourceSpec(
         name="fineweb2_en",
         repo_id="HuggingFaceFW/fineweb-2",
-        file_prefix="data/eng_Latn/train/",
+        file_prefix="data/",
         suffix=".parquet",
         text_field="text",
         file_format="parquet",
         category="english_web",
-        note="Modern English slice from FineWeb2 for base-language coverage.",
+        note="Modern English slice from FineWeb2 for base-language coverage; filtered to eng_Latn/train at match time.",
     ),
     "falcon_refinedweb_en": SourceSpec(
         name="falcon_refinedweb_en",
@@ -192,6 +192,10 @@ def list_matching_files(api: HfApi, source: SourceSpec, limit: int) -> list[str]
         for file_name in files
         if file_name.startswith(source.file_prefix) and file_name.endswith(source.suffix)
     ]
+    if source.name == "fineweb2_en":
+        matched = [file_name for file_name in matched if "/eng_Latn/train/" in file_name]
+    if source.name == "fineweb2_zh":
+        matched = [file_name for file_name in matched if "/cmn_Hani/train/" in file_name]
     matched.sort()
     return matched[:limit]
 

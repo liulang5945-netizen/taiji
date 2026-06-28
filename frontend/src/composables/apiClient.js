@@ -36,3 +36,17 @@ export async function authFetch(url, options = {}) {
   }
   return response
 }
+
+/**
+ * 带 Content-Type 校验的 JSON 请求封装。
+ * 若响应非 JSON，抛出错误避免静默解析失败。
+ */
+export async function authFetchJSON(url, options = {}) {
+  const response = await authFetch(url, options)
+  const ctype = response.headers.get('content-type') || ''
+  if (!ctype.includes('application/json')) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`Expected JSON but got ${ctype || 'unknown content-type'}: ${text.slice(0, 200)}`)
+  }
+  return response.json()
+}

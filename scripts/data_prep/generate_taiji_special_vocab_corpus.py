@@ -8,7 +8,6 @@ import json
 from itertools import product
 from pathlib import Path
 
-
 TOOLS = [
     "search",
     "read_file",
@@ -21,47 +20,47 @@ TOOLS = [
 ]
 
 GOALS = [
-    "检查训练数据质量",
-    "修复脚本中的参数错误",
-    "确认 tokenizer contract 没有被修改",
-    "分析用户的长期目标",
-    "整理下一步训练计划",
-    "验证远端日志是否正常",
-    "生成一份简洁报告",
-    "比较中英文数据比例",
+    "check_training_data_quality",
+    "fix_script_parameter_errors",
+    "verify_tokenizer_contract_integrity",
+    "analyze_long_term_user_goal",
+    "prepare_next_training_plan",
+    "verify_remote_logs_are_healthy",
+    "generate_concise_status_report",
+    "compare_zh_en_data_ratio",
 ]
 
 CAUSES = [
-    "输入路径不存在",
-    "数据类别配比不均衡",
-    "工具返回为空",
-    "网络镜像响应超时",
-    "checkpoint 缺少必要文件",
-    "用户目标发生变化",
-    "样本重复率过高",
-    "命令缺少必要参数",
+    "input_path_missing",
+    "bucket_mix_unbalanced",
+    "tool_returned_empty_payload",
+    "mirror_timeout",
+    "checkpoint_missing_required_files",
+    "user_goal_changed",
+    "sample_duplication_too_high",
+    "missing_required_argument",
 ]
 
 CORRECTIONS = [
-    "先检查文件树再执行命令",
-    "按 zh/en/code/math/tech/taiji_special 重新采样",
-    "降低 shard 数量并记录缺口",
-    "切换到镜像友好的数据源",
-    "重新验证 model.pt、config.json 和 tokenizer 文件",
-    "复述当前目标并更新计划",
-    "先去重再写入训练语料",
-    "补齐参数后再重试",
+    "inspect_project_tree_before_running_commands",
+    "rebalance_zh_en_code_math_tech_taiji_special_sampling",
+    "reduce_shard_count_and_record_gap",
+    "switch_to_mirror_friendly_source",
+    "revalidate_model_config_and_tokenizer_files",
+    "restate_current_goal_and_refresh_plan",
+    "deduplicate_before_writing_training_corpus",
+    "fill_missing_arguments_then_retry",
 ]
 
 OBSERVATIONS = [
-    "终端正在输出 SentencePiece BPE 训练日志。",
-    "报告显示代码和数学配额已经填满。",
-    "词表验证通过，total_vocab 仍然是 256000。",
-    "当前数据盘空间不足，需要清理 raw shard。",
-    "用户希望优先保证 1B 的质量。",
-    "英文数据已经落盘，但技术文档仍然偏少。",
-    "多模态 token 已预留，但 alignment 尚未开始。",
-    "当前任务不应该打断正在运行的训练进程。",
+    "sentencepiece_bpe_training_is_running",
+    "code_and_math_quota_are_filled",
+    "tokenizer_contract_validation_passed",
+    "data_disk_space_is_tight",
+    "user_prioritizes_1b_quality",
+    "english_data_exists_but_tech_docs_are_light",
+    "multimodal_tokens_are_reserved_but_alignment_not_started",
+    "active_training_job_should_not_be_interrupted",
 ]
 
 MEMORY_TYPES = ["short_term", "long_term", "episodic", "semantic"]
@@ -74,22 +73,22 @@ def build_records(limit: int) -> list[str]:
     for tool, goal in product(TOOLS, GOALS):
         payload = {"name": tool, "args": {"goal": goal, "dry_run": True}}
         records.append(f"<tool_call>{json.dumps(payload, ensure_ascii=False)}</tool_call>")
-        records.append(f"<tool_result>工具 {tool} 已完成：{goal}。</tool_result>")
+        records.append(f"<tool_result>tool {tool} finished: {goal}</tool_result>")
 
     for goal in GOALS:
         records.append(
-            f"<plan><goal>{goal}</goal><step>理解目标</step><step>执行检查</step>"
-            f"<step>验证输出</step><plan_done></plan_done></plan>"
+            f"<plan><goal>{goal}</goal><step>understand_goal</step><step>run_checks</step>"
+            f"<step>verify_output</step><plan_done></plan_done></plan>"
         )
-        records.append(f"<think>我需要围绕“{goal}”选择最少但可靠的操作。</think>")
-        records.append(f"<final_answer>{goal} 已处理，并保留了可复查的结果。</final_answer>")
+        records.append(f"<think>choose the smallest reliable action set for {goal}</think>")
+        records.append(f"<final_answer>{goal} completed with reviewable evidence.</final_answer>")
 
     for cause, correction in product(CAUSES, CORRECTIONS):
         records.append(f"<reflect><cause>{cause}</cause><correct>{correction}</correct></reflect>")
 
     for memory_type, goal in product(MEMORY_TYPES, GOALS):
-        records.append(f"<mem_read><{memory_type}>读取与“{goal}”相关的记忆。</{memory_type}></mem_read>")
-        records.append(f"<mem_write><{memory_type}>记录：{goal} 的执行结果已经验证。</{memory_type}></mem_write>")
+        records.append(f"<mem_read><{memory_type}>read memory about {goal}</{memory_type}></mem_read>")
+        records.append(f"<mem_write><{memory_type}>record verified outcome for {goal}</{memory_type}></mem_write>")
 
     for modality, observation in product(MODALITIES, OBSERVATIONS):
         records.append(f"<{modality}>{observation}</{modality}>")
@@ -97,7 +96,7 @@ def build_records(limit: int) -> list[str]:
 
     for observation in OBSERVATIONS:
         records.append(f"<observe>{observation}</observe>")
-        records.append(f"<inner_voice>保持耐心，先验证事实：{observation}</inner_voice>")
+        records.append(f"<inner_voice>verify facts first: {observation}</inner_voice>")
         records.append(f"<context>{observation}</context>")
 
     deduped = list(dict.fromkeys(records))
@@ -115,6 +114,15 @@ def build_records(limit: int) -> list[str]:
     return expanded
 
 
+def write_records(output: Path, records: int) -> dict[str, str | int]:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    built_records = build_records(records)
+    with output.open("w", encoding="utf-8", newline="\n") as handle:
+        for text in built_records:
+            handle.write(json.dumps({"text": text, "source": "taiji_special_vocab"}, ensure_ascii=False) + "\n")
+    return {"output": str(output), "records": len(built_records)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Taiji special-format tokenizer text")
     parser.add_argument(
@@ -124,13 +132,8 @@ def main() -> None:
     parser.add_argument("--records", type=int, default=20_000)
     args = parser.parse_args()
 
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    records = build_records(args.records)
-    with output.open("w", encoding="utf-8", newline="\n") as handle:
-        for text in records:
-            handle.write(json.dumps({"text": text, "source": "taiji_special_vocab"}, ensure_ascii=False) + "\n")
-    print(json.dumps({"output": str(output), "records": len(records)}, ensure_ascii=False, indent=2))
+    result = write_records(Path(args.output), args.records)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

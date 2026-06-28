@@ -68,7 +68,9 @@ def test_tokenizer():
 
     # 编码
     result = tokenizer("Hello, how are you?")
-    print(f"Encoded: {result['input_ids'].shape}")
+    assert isinstance(result["input_ids"], list)
+    assert len(result["input_ids"]) == 1
+    print(f"Encoded length: {len(result['input_ids'][0])}")
 
     # 解码
     text = tokenizer.decode(result["input_ids"][0])
@@ -76,13 +78,13 @@ def test_tokenizer():
 
     # 特殊 token
     result = tokenizer("<think>test</think>")
-    ids = result["input_ids"][0].tolist()
+    ids = result["input_ids"][0]
     print(f"With special tokens: {ids}")
 
     print("[OK] Tokenizer test passed\n")
 
 
-def test_save_load():
+def test_save_load(tmp_path):
     """测试保存和加载"""
     from taiji.loader import create_model, save_model, load_model
 
@@ -96,17 +98,15 @@ def test_save_load():
     model.set_num_tools(1)
 
     # 保存
-    save_path = "./test_taiji_save"
-    save_model(model, tokenizer, save_path)
+    save_path = tmp_path / "test_taiji_save"
+    save_model(model, tokenizer, str(save_path))
 
     # 加载
-    model2, tokenizer2 = load_model(save_path, device="cpu")
+    model2, tokenizer2 = load_model(str(save_path), device="cpu")
     print(f"Loaded tools: {tokenizer2.get_all_tool_ids()}")
     assert tokenizer2.get_tool_id("search") is not None
 
     # 清理
-    import shutil
-    shutil.rmtree(save_path)
 
     print("[OK] Save/Load test passed\n")
 

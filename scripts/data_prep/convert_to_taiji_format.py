@@ -1,9 +1,9 @@
-"""
-态极 Autodl 预训练脚本 v2
+﻿"""
+鎬佹瀬 Autodl 棰勮缁冭剼鏈?v2
 ==========================
-修复数据格式问题，使用态极正确的 [系统]/[用户]/[助手] 格式
+淇鏁版嵁鏍煎紡闂锛屼娇鐢ㄦ€佹瀬姝ｇ‘鐨?[绯荤粺]/[鐢ㄦ埛]/[鍔╂墜] 鏍煎紡
 
-用法:
+鐢ㄦ硶:
   python taiji/train/autodl_pretrain_v2.py --size 350m --data taiji_data/training_data/pretrain_final.jsonl
 """
 import os
@@ -28,9 +28,9 @@ logger = logging.getLogger("AutodlPretrain")
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="态极 Autodl 预训练 v2")
+    parser = argparse.ArgumentParser(description="鎬佹瀬 Autodl 棰勮缁?v2")
     parser.add_argument("--size", type=str, default="350m", choices=["125m", "350m", "1b", "3b", "7b"])
-    parser.add_argument("--data", type=str, required=True, help="训练数据路径")
+    parser.add_argument("--data", type=str, required=True, help="璁粌鏁版嵁璺緞")
     parser.add_argument("--output_dir", type=str, default="taiji_data/autodl_checkpoints")
     parser.add_argument("--max_seq_len", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=4)
@@ -52,10 +52,10 @@ def get_args():
 
 def format_conversation(messages):
     """
-    将 messages 格式转换为态极训练格式
+    灏?messages 鏍煎紡杞崲涓烘€佹瀬璁粌鏍煎紡
 
-    输入: [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}, ...]
-    输出: "[系统] ...\n[用户] ...\n[助手] ..."
+    杈撳叆: [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}, ...]
+    杈撳嚭: "[绯荤粺] ...\n[鐢ㄦ埛] ...\n[鍔╂墜] ..."
     """
     parts = []
     for msg in messages:
@@ -63,26 +63,26 @@ def format_conversation(messages):
         content = msg.get("content", "")
 
         if role == "system":
-            parts.append(f"[系统] {content}")
+            parts.append(f"[绯荤粺] {content}")
         elif role == "user":
-            parts.append(f"[用户] {content}")
+            parts.append(f"[鐢ㄦ埛] {content}")
         elif role == "assistant":
-            parts.append(f"[助手] {content}")
+            parts.append(f"[鍔╂墜] {content}")
 
     return "\n".join(parts)
 
 
 def format_react(task, steps):
     """
-    将 ReAct 格式转换为态极训练格式
+    灏?ReAct 鏍煎紡杞崲涓烘€佹瀬璁粌鏍煎紡
 
-    输入: {"task": "...", "steps": [{"thought": "...", "action": "...", ...}, ...]}
-    输出: "[系统] ...\n[用户] {task}\n[助手] <think>{thought}</think><tool_call>{action} {args}\n<tool_result>{result}</tool_result>\n..."
+    杈撳叆: {"task": "...", "steps": [{"thought": "...", "action": "...", ...}, ...]}
+    杈撳嚭: "[绯荤粺] ...\n[鐢ㄦ埛] {task}\n[鍔╂墜] <think>{thought}</think><tool_call>{action} {args}\n<tool_result>{result}</tool_result>\n..."
     """
     parts = [
-        "[系统] 你是态极AI助手，可以使用工具完成任务。",
-        f"[用户] {task}",
-        "[助手] "
+        "[绯荤粺] 浣犳槸鎬佹瀬AI鍔╂墜锛屽彲浠ヤ娇鐢ㄥ伐鍏峰畬鎴愪换鍔°€?,
+        f"[鐢ㄦ埛] {task}",
+        "[鍔╂墜] "
     ]
 
     for step in steps:
@@ -102,20 +102,20 @@ def format_react(task, steps):
                 parts[2] += f"\n<tool_result>{observation}</tool_result>\n"
 
         if final_answer:
-            parts[2] += f"<final_answer>{final_answer}</final_answer>"
+            parts[2] += f"<final_answer>{final_answer}"
 
     return "\n".join(parts)
 
 
 class TaijiDataset(torch.utils.data.Dataset):
-    """态极训练数据集 - 使用正确的格式"""
+    """鎬佹瀬璁粌鏁版嵁闆?- 浣跨敤姝ｇ‘鐨勬牸寮?""
 
     def __init__(self, data_file, tokenizer, max_len=512):
         self.tokenizer = tokenizer
         self.max_len = max_len
         self.samples = []
 
-        logger.info(f"加载数据: {data_file}")
+        logger.info(f"鍔犺浇鏁版嵁: {data_file}")
         count = 0
         skipped = 0
 
@@ -127,24 +127,22 @@ class TaijiDataset(torch.utils.data.Dataset):
                 try:
                     item = json.loads(line)
 
-                    # 处理 messages 格式（对话）
+                    # 澶勭悊 messages 鏍煎紡锛堝璇濓級
                     if "messages" in item:
                         text = format_conversation(item["messages"])
 
-                    # 处理 ReAct 格式（工具调用）
+                    # 澶勭悊 ReAct 鏍煎紡锛堝伐鍏疯皟鐢級
                     elif "task" in item and "steps" in item:
                         text = format_react(item["task"], item["steps"])
 
-                    # 处理纯文本格式
-                    elif "text" in item:
+                    # 澶勭悊绾枃鏈牸寮?                    elif "text" in item:
                         text = item["text"]
 
                     else:
                         skipped += 1
                         continue
 
-                    # 过滤太短的样本
-                    if len(text) < 50:
+                    # 杩囨护澶煭鐨勬牱鏈?                    if len(text) < 50:
                         skipped += 1
                         continue
 
@@ -155,7 +153,7 @@ class TaijiDataset(torch.utils.data.Dataset):
                     skipped += 1
                     continue
 
-        logger.info(f"加载完成: {count} 条样本, 跳过 {skipped} 条无效数据")
+        logger.info(f"鍔犺浇瀹屾垚: {count} 鏉℃牱鏈? 璺宠繃 {skipped} 鏉℃棤鏁堟暟鎹?)
 
     def __len__(self):
         return len(self.samples)
@@ -164,8 +162,7 @@ class TaijiDataset(torch.utils.data.Dataset):
         text = self.samples[idx]
         encoded = self.tokenizer.encode(text)
 
-        # 截断到最大长度
-        if len(encoded) > self.max_len:
+        # 鎴柇鍒版渶澶ч暱搴?        if len(encoded) > self.max_len:
             encoded = encoded[:self.max_len]
 
         input_ids = torch.tensor(encoded, dtype=torch.long)
@@ -173,7 +170,7 @@ class TaijiDataset(torch.utils.data.Dataset):
 
 
 def collate_fn(batch, pad_id=0, max_len=512):
-    """动态padding的collate函数"""
+    """鍔ㄦ€乸adding鐨刢ollate鍑芥暟"""
     input_ids = [item["input_ids"] for item in batch]
     labels = [item["labels"] for item in batch]
 
@@ -191,7 +188,7 @@ def collate_fn(batch, pad_id=0, max_len=512):
 
 
 def setup_model(args):
-    """初始化模型"""
+    """鍒濆鍖栨ā鍨?""
     from taiji.config import ModelConfig
     from taiji.architecture import ModelSelf
 
@@ -212,13 +209,13 @@ def setup_model(args):
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info(f"模型参数: {total_params/1e6:.1f}M (可训练: {trainable_params/1e6:.1f}M)")
+    logger.info(f"妯″瀷鍙傛暟: {total_params/1e6:.1f}M (鍙缁? {trainable_params/1e6:.1f}M)")
 
     return model, config
 
 
 def get_lr(step, max_steps, warmup_steps, max_lr):
-    """Cosine warmup 学习率调度"""
+    """Cosine warmup 瀛︿範鐜囪皟搴?""
     if step < warmup_steps:
         return max_lr * step / warmup_steps
     progress = (step - warmup_steps) / (max_steps - warmup_steps)
@@ -226,16 +223,16 @@ def get_lr(step, max_steps, warmup_steps, max_lr):
 
 
 def train(args):
-    """主训练循环"""
-    # 设置设备
+    """涓昏缁冨惊鐜?""
+    # 璁剧疆璁惧
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"使用设备: {device}")
+    logger.info(f"浣跨敤璁惧: {device}")
 
-    # 初始化 tokenizer
+    # 鍒濆鍖?tokenizer
     import sentencepiece as spm
     sp = spm.SentencePieceProcessor()
 
-    # 查找 SentencePiece 模型
+    # 鏌ユ壘 SentencePiece 妯″瀷
     sp_candidates = [
         os.path.join("taiji", "tokenizer", "sentencepiece.model"),
         os.path.join("taiji_data", "final", "tokenizer", "sentencepiece.model"),
@@ -246,12 +243,12 @@ def train(args):
     for sp_path in sp_candidates:
         if os.path.exists(sp_path):
             sp.Load(sp_path)
-            logger.info(f"加载 SentencePiece: {sp_path}")
+            logger.info(f"鍔犺浇 SentencePiece: {sp_path}")
             sp_loaded = True
             break
 
     if not sp_loaded:
-        logger.error("未找到 SentencePiece 模型文件!")
+        logger.error("鏈壘鍒?SentencePiece 妯″瀷鏂囦欢!")
         return
 
     class SimpleTokenizer:
@@ -267,9 +264,9 @@ def train(args):
 
     tokenizer = SimpleTokenizer(sp)
 
-    # 加载数据
+    # 鍔犺浇鏁版嵁
     if not os.path.exists(args.data):
-        logger.error(f"数据文件不存在: {args.data}")
+        logger.error(f"鏁版嵁鏂囦欢涓嶅瓨鍦? {args.data}")
         return
 
     dataset = TaijiDataset(args.data, tokenizer, args.max_seq_len)
@@ -282,17 +279,15 @@ def train(args):
         pin_memory=True,
     )
 
-    # 初始化模型
-    model, config = setup_model(args)
+    # 鍒濆鍖栨ā鍨?    model, config = setup_model(args)
 
     if args.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
-        logger.info("梯度检查点已启用")
+        logger.info("姊害妫€鏌ョ偣宸插惎鐢?)
 
     model = model.to(device)
 
-    # 优化器
-    optimizer = torch.optim.AdamW(
+    # 浼樺寲鍣?    optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.lr,
         betas=(0.9, 0.95),
@@ -300,7 +295,7 @@ def train(args):
         weight_decay=args.weight_decay,
     )
 
-    # 恢复训练
+    # 鎭㈠璁粌
     start_step = 0
     best_loss = float("inf")
     no_improve = 0
@@ -315,9 +310,9 @@ def train(args):
             best_loss = ckpt.get("best_loss", float("inf"))
         else:
             model.load_state_dict(ckpt)
-        logger.info(f"从 checkpoint 恢复: step={start_step}, loss={best_loss:.4f}")
+        logger.info(f"浠?checkpoint 鎭㈠: step={start_step}, loss={best_loss:.4f}")
 
-    # 训练循环
+    # 璁粌寰幆
     model.train()
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -328,8 +323,8 @@ def train(args):
     log_loss = 0.0
 
     logger.info("=" * 60)
-    logger.info(f"开始训练 | 模型: {args.size} | 步数: {args.max_steps}")
-    logger.info(f"数据: {args.data} | 样本数: {len(dataset)}")
+    logger.info(f"寮€濮嬭缁?| 妯″瀷: {args.size} | 姝ユ暟: {args.max_steps}")
+    logger.info(f"鏁版嵁: {args.data} | 鏍锋湰鏁? {len(dataset)}")
     logger.info(f"Batch: {args.batch_size} x {args.grad_accum} = {args.batch_size * args.grad_accum}")
     logger.info(f"LR: {args.lr} | SeqLen: {args.max_seq_len}")
     logger.info("=" * 60)
@@ -354,8 +349,7 @@ def train(args):
                 optimizer.step()
                 optimizer.zero_grad()
 
-            # 更新学习率
-            lr = get_lr(global_step, args.max_steps, args.warmup_steps, args.lr)
+            # 鏇存柊瀛︿範鐜?            lr = get_lr(global_step, args.max_steps, args.warmup_steps, args.lr)
             for param_group in optimizer.param_groups:
                 param_group["lr"] = lr
 
@@ -364,7 +358,7 @@ def train(args):
             log_loss += loss_val
             global_step += 1
 
-            # 日志
+            # 鏃ュ織
             if global_step % args.log_every == 0:
                 avg_loss = log_loss / args.log_every
                 logger.info(
@@ -374,7 +368,7 @@ def train(args):
                 )
                 log_loss = 0.0
 
-            # 保存 checkpoint
+            # 淇濆瓨 checkpoint
             if global_step % args.save_every == 0:
                 save_path = output_dir / f"checkpoint-{global_step}.pt"
                 save_obj = {
@@ -385,10 +379,9 @@ def train(args):
                     "config": config.__dict__,
                 }
                 torch.save(save_obj, save_path)
-                logger.info(f"Checkpoint 已保存: {save_path}")
+                logger.info(f"Checkpoint 宸蹭繚瀛? {save_path}")
 
-            # 评估和早停
-            if global_step % args.eval_every == 0:
+            # 璇勪及鍜屾棭鍋?            if global_step % args.eval_every == 0:
                 avg_eval_loss = running_loss / args.eval_every
                 running_loss = 0.0
 
@@ -401,30 +394,30 @@ def train(args):
                         "config": config.__dict__,
                     }
                     torch.save(save_obj, best_path)
-                    logger.info(f"新的最佳模型! Loss: {best_loss:.4f}")
+                    logger.info(f"鏂扮殑鏈€浣虫ā鍨? Loss: {best_loss:.4f}")
                 else:
                     no_improve += 1
-                    logger.info(f"未改善 ({no_improve}/{args.patience})")
+                    logger.info(f"鏈敼鍠?({no_improve}/{args.patience})")
 
                 if avg_eval_loss <= args.target_loss:
-                    logger.info(f"达到目标 loss {args.target_loss}, 训练完成!")
+                    logger.info(f"杈惧埌鐩爣 loss {args.target_loss}, 璁粌瀹屾垚!")
                     break
 
                 if no_improve >= args.patience:
-                    logger.info(f"连续 {args.patience} 次未改善, 早停!")
+                    logger.info(f"杩炵画 {args.patience} 娆℃湭鏀瑰杽, 鏃╁仠!")
                     break
 
-    # 保存最终模型
-    final_path = output_dir / "final.pt"
+    # 淇濆瓨鏈€缁堟ā鍨?    final_path = output_dir / "final.pt"
     save_obj = {
         "model": model.state_dict(),
         "config": config.__dict__,
     }
     torch.save(save_obj, final_path)
-    logger.info(f"最终模型已保存: {final_path}")
-    logger.info(f"训练完成! 总步数: {global_step}, 最佳Loss: {best_loss:.4f}")
+    logger.info(f"鏈€缁堟ā鍨嬪凡淇濆瓨: {final_path}")
+    logger.info(f"璁粌瀹屾垚! 鎬绘鏁? {global_step}, 鏈€浣矻oss: {best_loss:.4f}")
 
 
 if __name__ == "__main__":
     args = get_args()
     train(args)
+

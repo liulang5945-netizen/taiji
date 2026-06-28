@@ -33,14 +33,22 @@ def api(path, data=None, method=None):
         return 0, {"error": str(e)}
 
 
+def _require_live_api() -> None:
+    status, _ = api("/api/health")
+    if status == 0:
+        pytest.skip("Live API server is not running at http://127.0.0.1:8000")
+
+
 def test_health():
     """健康检查"""
+    _require_live_api()
     s, d = api("/api/health")
     assert s == 200, f"健康检查失败: HTTP {s}"
 
 
 def test_settings():
     """设置读取"""
+    _require_live_api()
     s, d = api("/api/settings")
     assert s == 200, f"设置读取失败: HTTP {s}"
     assert "model" in d or "error" not in d
@@ -48,18 +56,21 @@ def test_settings():
 
 def test_memory_status():
     """记忆状态"""
+    _require_live_api()
     s, d = api("/api/agent/memory/status")
     assert s in (200, 500), f"记忆状态: HTTP {s}"
 
 
 def test_tools_list():
     """工具列表"""
+    _require_live_api()
     s, d = api("/api/agent/tools")
     assert s in (200, 500), f"工具列表: HTTP {s}"
 
 
 def test_chat_sessions():
     """会话 CRUD"""
+    _require_live_api()
     # 创建
     s, d = api("/api/chat/sessions", {"id": 99902, "name": "API测试会话"})
     assert s in (200, 422), f"创建会话: HTTP {s}"
@@ -75,17 +86,20 @@ def test_chat_sessions():
 
 def test_model_status():
     """模型状态"""
+    _require_live_api()
     s, d = api("/api/model/status")
     assert s in (200, 500), f"模型状态: HTTP {s}"
 
 
 def test_life_status():
     """生命状态"""
+    _require_live_api()
     s, d = api("/api/life/status")
     assert s in (200, 500), f"生命状态: HTTP {s}"
 
 
 def test_gguf_models():
     """GGUF 模型列表"""
+    _require_live_api()
     s, d = api("/api/settings/gguf_models")
     assert s in (200, 500), f"GGUF模型列表: HTTP {s}"

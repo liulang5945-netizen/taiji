@@ -32,11 +32,13 @@ def test_dataset():
     print(f"Labels shape: {sample['labels'].shape}")
     print(f"Tool target: {sample['tool_target']}")
 
+    assert len(dataset) > 0
+    assert sample["input_ids"].shape[0] == 256
+    assert sample["labels"].shape[0] == 256
     print("[OK] Dataset test passed\n")
-    return dataset, tokenizer
 
 
-def test_training():
+def test_training(tmp_path):
     """测试训练循环"""
     from taiji.architecture import ModelSelf
     from taiji.config import ModelConfig
@@ -72,14 +74,14 @@ def test_training():
     )
 
     # 训练 (只跑 1 epoch，快速验证)
-    save_dir = "./test_taiji_checkpoints"
+    save_dir = tmp_path / "test_taiji_checkpoints"
     loss_history = []
 
     for fraction, desc, losses, metrics in trainer.train(
         dataset=dataset,
         num_epochs=1,
         batch_size=2,
-        save_dir=save_dir,
+        save_dir=str(save_dir),
         save_steps=100,  # 不保存中间检查点
         log_steps=2,
         device="cpu",
@@ -90,14 +92,14 @@ def test_training():
     print(f"\nFinal loss: {loss_history[-1]:.4f}" if loss_history else "No steps completed")
 
     # 清理
-    import shutil
-    if os.path.exists(save_dir):
-        shutil.rmtree(save_dir)
+    assert loss_history
+    assert (save_dir / "best").exists()
+    assert (save_dir / "final").exists()
 
     print("[OK] Training test passed\n")
 
 
-def test_full_pipeline():
+def test_full_pipeline(tmp_path):
     """完整流程测试: 创建 → 训练 → 保存 → 加载 → 推理"""
     from taiji import create_model, save_model, load_model, NativeInferenceEngine
     from taiji.train.trainer import ModelSelfTrainer, build_dataset
@@ -128,19 +130,20 @@ def test_full_pipeline():
     dataset = build_dataset(tokenizer, max_length=128)
     trainer = ModelSelfTrainer(model, tokenizer, learning_rate=1e-3, warmup_steps=5)
 
+    checkpoint_dir = tmp_path / "test_pipeline_ckpt"
     for _, desc, _, _ in trainer.train(dataset, num_epochs=1, batch_size=2,
-                                       save_dir="./test_pipeline_ckpt",
+                                       save_dir=str(checkpoint_dir),
                                        save_steps=100, log_steps=5, device="cpu"):
         pass
 
     # 3. 保存
     print("3. Saving...")
-    save_path = "./test_pipeline_model"
-    save_model(model, tokenizer, save_path)
+    save_path = tmp_path / "test_pipeline_model"
+    save_model(model, tokenizer, str(save_path))
 
     # 4. 加载
     print("4. Loading...")
-    model2, tokenizer2 = load_model(save_path, device="cpu")
+    model2, tokenizer2 = load_model(str(save_path), device="cpu")
 
     # 5. 推理
     print("5. Inference...")
@@ -151,10 +154,10 @@ def test_full_pipeline():
     print(f"ReAct step: {step}")
 
     # 清理
-    import shutil
-    for d in [save_path, "./test_pipeline_ckpt"]:
-        if os.path.exists(d):
-            shutil.rmtree(d)
+    assert checkpoint_dir.exists()
+    assert save_path.exists()
+    assert isinstance(step, dict)
+    assert step
 
     print("[OK] Full pipeline test passed\n")
 

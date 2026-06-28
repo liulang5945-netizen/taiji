@@ -1,7 +1,7 @@
 """
-合并清洗后的SFT数据，为预训练准备最终数据集
-============================================
-将清洗后的对话数据合并为单一文件，供 Autodl 预训练使用。
+合并清洗后的 SFT 数据，为微调准备最终数据集
+==========================================
+将清洗后的对话数据合并为单一文件，供后续 SFT 微调使用。
 
 用法:
   python scripts/data_prep/merge_cleaned_sft.py
@@ -93,22 +93,11 @@ def merge_cleaned_sft():
         print(f"  {source}: {count} 条")
 
     print("\n" + "=" * 60)
-    print("下一步: 在 Autodl 上开始预训练")
+    print("下一步: 使用清洗后的 SFT 数据做微调")
     print("=" * 60)
     print("""
-# 单卡训练 (V100/A100)
-python taiji/train/autodl_pretrain.py \\
-    --size 350m \\
-    --data taiji_data/training_data/sft_merged_clean.jsonl \\
-    --max_steps 10000 \\
-    --batch_size 4
-
-# 多卡训练 (推荐4卡A100)
-accelerate launch --multi_gpu --num_processes 4 \\
-    taiji/train/autodl_pretrain.py \\
-    --size 1b \\
-    --data taiji_data/training_data/sft_merged_clean.jsonl \\
-    --max_steps 50000
+# 当前仓库中，清洗后的 SFT 数据用于微调而不是预训练
+python taiji/train/finetune_taiji.py
 """)
 
 

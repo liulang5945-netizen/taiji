@@ -1,9 +1,11 @@
 
 /**
  * API 连接与健康检查 composable
- * 态极专属 — 无需模型切换/下载等功能
+ *
+ * 运行时状态统一通过 runtimeStore 管理（单一数据源）。
+ * 本模块负责 HTTP 健康检查逻辑和连接生命周期。
  */
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { useAppStore } from '../stores/appStore.js';
 import { useRuntimeStore } from '../stores/runtimeStore.js';
 import { API_BASE, authFetch } from './apiClient.js';
@@ -15,14 +17,9 @@ import { API_BASE, authFetch } from './apiClient.js';
  */
 export { API_BASE, authFetch };
 
-// === 模块级共享状态 ===
-const connectionState = ref('unknown');
-const connectionErrorMsg = ref('');
+// === 内部模块级状态 ===
 const retryCountdown = ref(0);
 const downloadProgress = ref(null);
-const currentLang = ref('zh');
-const taijiAvailable = ref(true);
-const modelLoaded = ref(false);
 let healthCheckTimer = null;
 let retryTimer = null;
 let consecutiveFailures = 0;
@@ -41,29 +38,9 @@ export function useApi() {
   const runtimeStore = useRuntimeStore();
   const t = (key, params = {}) => appStore.t(key, params);
 
-  const connectionClass = computed(() => {
-    if (connectionState.value === 'connected') return 'connected';
-    if (connectionState.value === 'downloading') return 'downloading';
-    if (connectionState.value === 'loading') return 'loading';
-    if (connectionState.value === 'connecting') return 'connecting';
-    return 'error';
-  });
-
-  const connectionStatus = computed(() => {
-    if (connectionState.value === 'connected') return modelLoaded.value ? t('status_connected') : t('status_connected_no_model');
-    if (connectionState.value === 'connecting') return t('status_connecting');
-    if (connectionState.value === 'loading') {
-      if (retryCountdown.value > 0) return t('retry', { n: retryCountdown.value });
-      return t('status_model_loading');
-    }
-    return t('status_error');
-  });
-
   function syncAppState(state, msg = '') {
-    connectionState.value = state;
-    connectionErrorMsg.value = msg;
-    appStore.setConnectionState(state, msg, modelLoaded.value);
-    runtimeStore.syncHealth(state, msg, modelLoaded.value);
+    // 统一写入 runtimeStore（单一数据源）
+    runtimeStore.syncHealth(state, msg, runtimeStore.health.modelLoaded);
   }
 
   /**
@@ -81,12 +58,15 @@ export function useApi() {
       const ctype = resp.headers.get('content-type') || '';
       if (!ctype.includes('application/json')) return null;
       return await resp.json();
-    } catch {
+    } catch (e) { console.debug('[useApi] bootstrap check failed:', e.message) }
       return null;
     }
   }
 
   async function checkHealth() {
+    const state = runtimeStore.health.state;
+    const modelLoaded = runtimeStore.health.modelLoaded;
+
     try {
       // Step 1: Use public bootstrap endpoint to determine auth state
       const bootstrap = await checkBootstrap();
@@ -109,7 +89,6 @@ export function useApi() {
 
       if (!resp.ok) {
         if (resp.status === 401) {
-          // Token expired or invalid — signal login needed
           syncAppState('connecting', '需要重新登录');
           return false;
         }
@@ -129,21 +108,18 @@ export function useApi() {
       consecutiveFailures = 0;
       if (health.state === 'connected') {
         lastHealthyAt = Date.now();
-        modelLoaded.value = !!health.model_loaded;
         syncAppState('connected', health.message || '');
         downloadProgress.value = null;
         retryCountdown.value = 0;
-        taijiAvailable.value = true;
         clearRetryTimer();
         return true;
       } else if (health.state === 'downloading') {
-        modelLoaded.value = false;
         downloadProgress.value = health.download || health;
         syncAppState('downloading', health.message || '模型正在下载...');
         return false;
       } else if (health.state === 'loading') {
         consecutiveFailures = 0;
-        if (connectionState.value !== 'connected') {
+        if (state !== 'connected') {
           syncAppState('loading', health.message || '模型正在加载中...');
         }
         return false;
@@ -153,20 +129,20 @@ export function useApi() {
       }
     } catch (err) {
       const recentlyHealthy = lastHealthyAt && Date.now() - lastHealthyAt < 45000;
-      if (connectionState.value === 'loading') {
+      if (state === 'loading') {
         consecutiveFailures = 0;
         return false;
       }
       if (recentlyHealthy) {
         consecutiveFailures = 0;
         runtimeStore.syncHealth(
-          connectionState.value === 'error' ? 'connecting' : connectionState.value,
+          state === 'error' ? 'connecting' : state,
           '本地运行时短暂无响应，正在保持连接并自动重试...',
-          modelLoaded.value
+          modelLoaded
         );
         return false;
       }
-      if (connectionState.value === 'unknown' || connectionState.value === 'connecting') {
+      if (state === 'unknown' || state === 'connecting') {
         consecutiveFailures++;
         if (consecutiveFailures >= 5) {
           syncAppState('error', '无法连接到后端服务，请确认后端已启动');
@@ -185,13 +161,12 @@ export function useApi() {
   }
 
   function handleHealthFailure(message) {
+    const state = runtimeStore.health.state;
+    const modelLoaded = runtimeStore.health.modelLoaded;
     const recentlyHealthy = lastHealthyAt && Date.now() - lastHealthyAt < 45000;
     if (recentlyHealthy || consecutiveFailures < 7) {
       consecutiveFailures++;
-      runtimeStore.syncHealth('connecting', message || '正在等待本地运行时恢复...', modelLoaded.value);
-      connectionState.value = 'connecting';
-      connectionErrorMsg.value = message || '';
-      appStore.setConnectionState('connecting', connectionErrorMsg.value, modelLoaded.value);
+      runtimeStore.syncHealth('connecting', message || '正在等待本地运行时恢复...', modelLoaded);
       return;
     }
     syncAppState('error', message || '本地运行时暂时不可用');
@@ -231,10 +206,8 @@ export function useApi() {
 
   return {
     API_BASE,
-    connectionState, connectionErrorMsg, retryCountdown, downloadProgress,
-    connectionClass, connectionStatus, currentLang,
+    retryCountdown, downloadProgress,
     t, checkHealth, startHealthCheck, stopHealthCheck,
     setChatReceiving,
-    taijiAvailable, modelLoaded,
   };
 }

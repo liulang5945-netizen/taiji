@@ -214,7 +214,7 @@ def main():
     print("\n下一步:")
     print("1. 上传到 Autodl 平台")
     print("2. 运行预训练:")
-    print("   python taiji/train/autodl_pretrain.py --size 350m --data taiji_data/training_data/pretrain_final.jsonl")
+    print("   python taiji/train/finetune_taiji.py")
 
 if __name__ == '__main__':
     main()

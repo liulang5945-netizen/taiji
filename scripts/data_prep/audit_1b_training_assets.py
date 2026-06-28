@@ -52,14 +52,15 @@ def get_mix_buckets() -> list[MixBucket]:
     return buckets
 
 
-def load_sentencepiece() -> spm.SentencePieceProcessor:
-    candidates = [
-        PROJECT_ROOT / "tokenizer_native_v2" / "sentencepiece.model",
+def tokenizer_candidates() -> list[Path]:
+    return [
         PROJECT_ROOT / "taiji" / "tokenizer_native_v2" / "sentencepiece.model",
-        PROJECT_ROOT / "tokenizer" / "sentencepiece.model",
-        PROJECT_ROOT / "taiji" / "tokenizer" / "sentencepiece.model",
+        PROJECT_ROOT / "tokenizer_native_v2" / "sentencepiece.model",
     ]
-    for path in candidates:
+
+
+def load_sentencepiece() -> spm.SentencePieceProcessor:
+    for path in tokenizer_candidates():
         if path.exists():
             sp = spm.SentencePieceProcessor()
             sp.load(str(path))

@@ -76,9 +76,24 @@ logs/
 # Test artifacts
 .pytest_cache/
 .pytest_cache*/
+.pytest_tmp/
 pytest-cache-files-*/
 .coverage
 htmlcov/
+.taiji_test_tmp/
+.taiji_test_tmp_manual/
+.hf_cache/
+test_pipeline_ckpt/
+test_pipeline_model/
+test_taiji_checkpoints/
+delete_probe_dir/
+test_report.json
+test.txt
+tmp_a/
+tmp_manual_parent/
+.taiji_test_tmp_probe/
+.tmp_b/
+.codex_tmp/
 
 # OS
 .DS_Store

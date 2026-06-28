@@ -228,6 +228,7 @@ class TestThreadSafeLifeInterface:
         
         # 模拟scheduler
         mock_scheduler = Mock()
+        mock_scheduler.force_action.return_value = {"success": True}
         mock_scheduler.needs = Mock()
         mock_scheduler.needs.hunger = 70.0
         
@@ -235,13 +236,14 @@ class TestThreadSafeLifeInterface:
         result = interface.feed(amount=20.0)
         
         assert result is True
-        assert mock_scheduler.needs.hunger == 50.0
+        mock_scheduler.force_action.assert_called_once_with("feed")
 
     def test_sleep_operation(self):
         """测试睡眠操作"""
         interface = ThreadSafeLifeInterface()
         
         mock_scheduler = Mock()
+        mock_scheduler.force_action.return_value = {"success": True}
         mock_scheduler.needs = Mock()
         mock_scheduler.needs.fatigue = 80.0
         
@@ -249,14 +251,14 @@ class TestThreadSafeLifeInterface:
         result = interface.sleep(duration=3600)
         
         assert result is True
-        # 疲劳度应该下降
-        assert mock_scheduler.needs.fatigue < 80.0
+        mock_scheduler.force_action.assert_called_once_with("sleep")
 
     def test_play_operation(self):
         """测试玩耍操作"""
         interface = ThreadSafeLifeInterface()
         
         mock_scheduler = Mock()
+        mock_scheduler.force_action.return_value = {"success": True}
         mock_scheduler.needs = Mock()
         mock_scheduler.needs.boredom = 60.0
         mock_scheduler.needs.stress = 50.0

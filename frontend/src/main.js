@@ -19,7 +19,7 @@ app.config.errorHandler = (err, instance, info) => {
       impact: '当前页面可能无法响应点击或加载内容',
       recovery: '请刷新页面，或回到对话后重试',
     })
-  } catch (_) {}
+  } catch (e) { console.debug('[main] error handler:', e.message) }
 }
 
 window.addEventListener('unhandledrejection', (e) => {
@@ -32,7 +32,7 @@ window.addEventListener('unhandledrejection', (e) => {
       impact: '部分功能可能没有完成',
       recovery: '请稍后重试或检查运行时状态',
     })
-  } catch (_) {}
+  } catch (e) { console.debug('[main] error handler:', e.message) }
 })
 
 app.mount('#app')

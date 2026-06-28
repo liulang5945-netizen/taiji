@@ -78,53 +78,14 @@ async def set_gguf_settings(req: dict):
 
 @router.get("/api/settings/gguf_models")
 async def list_gguf_models():
-    """List downloadable GGUF models."""
-    try:
-        from taiji.model_ext.gguf_engine import list_available_gguf_models
-
-        models = list_available_gguf_models()
-        return {
-            "models": [
-                {
-                    "key": key,
-                    "name": info["filename"],
-                    "size_gb": info["size_gb"],
-                    "description": info["description"],
-                }
-                for key, info in models.items()
-            ]
-        }
-    except Exception as exc:
-        logger.error(f"Failed to list GGUF models: {exc}")
-        return {"models": [], "error": str(exc)}
+    """GGUF models not supported in native Taiji stack."""
+    return {"models": [], "error": "原生态极不支持 GGUF 模型"}
 
 
 @router.post("/api/settings/download_gguf")
 async def download_gguf(req: dict):
-    """Download a GGUF model and persist its selection."""
-    model_key = req.get("model_key", "")
-    if not model_key:
-        raise HTTPException(status_code=400, detail="Model key cannot be empty")
-
-    from taiji.core.utils import get_external_path
-    from taiji.model_ext.gguf_engine import download_gguf_model
-
-    download_dir = get_external_path("gguf_models")
-
-    try:
-        path = download_gguf_model(model_key, download_dir)
-        update_settings(
-            {
-                "model_type": "gguf",
-                "gguf_path": path,
-                "n_gpu_layers": -1,
-                "n_ctx": 2048,
-            }
-        )
-        return {"status": "ok", "path": path, "message": f"Model downloaded to {path}; restart required"}
-    except Exception as exc:
-        logger.error(f"Failed to download GGUF model: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+    """GGUF download not supported in native Taiji stack."""
+    raise HTTPException(status_code=400, detail="原生态极不支持 GGUF 模型下载")
 
 
 @router.get("/api/system/current_model")
@@ -142,18 +103,11 @@ def get_current_model():
 
         actual_loaded_name = getattr(app_state, "_loaded_model_name", "") or ""
         if actual_loaded_name:
-            if actual_loaded_name.endswith(".gguf"):
-                effective_path = actual_loaded_name
-                effective_type = "gguf"
-            elif model_type == "self":
-                effective_path = actual_loaded_name
-                effective_type = "self"
-            else:
-                effective_path = actual_loaded_name
-                effective_type = "huggingface"
+            effective_path = actual_loaded_name
+            effective_type = "self"  # 原生态极 — 单一模型类型
         else:
-            effective_path = gguf_path or model_name
-            effective_type = "self" if model_type == "self" else ("gguf" if (model_type == "gguf" or gguf_path) else "huggingface")
+            effective_path = model_name
+            effective_type = "self"
 
         saved = load_settings()
         pending_model_type = saved.get("model_type", "")

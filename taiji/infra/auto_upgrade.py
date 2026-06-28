@@ -18,6 +18,9 @@ from typing import Optional, Dict, List, Tuple
 
 logger = logging.getLogger("Taiji.AutoUpgrade")
 
+from taiji.config import NATIVE_V2_TOKENIZER_CONTRACT
+from taiji.loader import save_model
+
 
 class CapabilityEvaluator:
     """
@@ -650,47 +653,22 @@ class AutoUpgrader:
         save_path = os.path.join(self.save_dir, "upgraded_models", f"taiji_{route['next']}")
         os.makedirs(save_path, exist_ok=True)
 
-        # 保存模型权重
-        torch.save({
-            "model_state_dict": new_model.state_dict(),
-            "config": {
-                "hidden_size": new_config.hidden_size,
-                "num_hidden_layers": new_config.num_hidden_layers,
-                "num_attention_heads": new_config.num_attention_heads,
-                "num_key_value_heads": new_config.num_key_value_heads,
-                "intermediate_size": new_config.intermediate_size,
-                "vocab_size": new_config.vocab_size,
+        new_config.base_vocab_size = int(NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"])
+        new_config.num_special_tokens = int(
+            NATIVE_V2_TOKENIZER_CONTRACT["total_vocab_size"]
+            - NATIVE_V2_TOKENIZER_CONTRACT["text_vocab_size"]
+        )
+        save_model(
+            new_model,
+            teacher_tokenizer,
+            save_path,
+            training_state={
+                "distill_result": distill_result,
+                "upgraded_from": current_size,
+                "upgraded_to": route["next"],
+                "timestamp": time.time(),
             },
-            "distill_result": distill_result,
-            "upgraded_from": current_size,
-            "upgraded_to": route["next"],
-            "timestamp": time.time(),
-        }, os.path.join(save_path, "model.pt"))
-
-        # 保存 config.json（态极加载器需要）
-        import json
-        config_dict = {
-            "hidden_size": new_config.hidden_size,
-            "num_hidden_layers": new_config.num_hidden_layers,
-            "num_attention_heads": new_config.num_attention_heads,
-            "num_key_value_heads": new_config.num_key_value_heads,
-            "intermediate_size": new_config.intermediate_size,
-            "vocab_size": new_config.vocab_size,
-            "base_vocab_size": 32000,
-            "num_special_tokens": 1000,
-            "rms_norm_eps": 1e-5,
-            "rope_theta": 500000.0,
-            "max_position_embeddings": 4096,
-        }
-        with open(os.path.join(save_path, "config.json"), "w", encoding="utf-8") as f:
-            json.dump(config_dict, f, indent=2)
-
-        # 复制分词器
-        import shutil
-        src_tokenizer = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tokenizer")
-        dst_tokenizer = os.path.join(save_path, "tokenizer")
-        if os.path.exists(src_tokenizer) and not os.path.exists(dst_tokenizer):
-            shutil.copytree(src_tokenizer, dst_tokenizer)
+        )
 
         self.upgrade_progress = 95
         eval_result = self._evaluate_model(new_model, teacher_tokenizer, training_data[:10])

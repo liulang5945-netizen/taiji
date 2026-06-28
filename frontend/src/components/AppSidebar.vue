@@ -14,9 +14,9 @@
           <span>{{ runtimeStore.health.modelLoaded ? '在线' : '等待模型' }}</span>
         </div>
       </div>
-      <div class="runtime-card" :class="runtimeStore.connectionClass">
+      <div class="runtime-card" :class="runtimeStore.connectionClass" role="status" :aria-label="`运行状态: ${runtimeStore.connectionStatus}`">
         <div class="runtime-state">
-          <span class="runtime-dot"></span>
+          <span class="runtime-dot" aria-hidden="true"></span>
           <span class="runtime-label">{{ runtimeStore.connectionStatus }}</span>
         </div>
         <MemoryStatusBar class="memory-badge" />

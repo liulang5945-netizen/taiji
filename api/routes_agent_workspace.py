@@ -351,11 +351,7 @@ def get_quick_paths():
 
 @router.get("/api/network/diagnose")
 def network_diagnose():
-    """Run model network diagnostics."""
-    try:
-        from taiji.model_ext.model_downloader import diagnose_network
-
-        return {"status": "ok", "diagnosis": diagnose_network()}
-    except Exception as exc:
+    """Network diagnostics (native Taiji — no remote model downloads needed)."""
+    return {"status": "ok", "diagnosis": {"message": "原生态极运行于本地，无需远程模型下载诊断"}}
         logger.error(f"网络诊断失败: {exc}")
         return {"status": "error", "message": str(exc)}

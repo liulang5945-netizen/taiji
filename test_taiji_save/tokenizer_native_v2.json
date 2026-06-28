@@ -1,0 +1,7 @@
+{
+  "sp_model": "sentencepiece.model",
+  "tool_mappings": {
+    "search": 190
+  },
+  "next_tool_id": 191
+}

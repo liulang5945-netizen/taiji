@@ -1,5 +1,5 @@
 {
-  "vocab_size": 33000,
+  "vocab_size": 256000,
   "hidden_size": 768,
   "intermediate_size": 2048,
   "num_hidden_layers": 12,
@@ -8,9 +8,11 @@
   "max_position_embeddings": 4096,
   "rms_norm_eps": 1e-05,
   "rope_theta": 500000.0,
-  "base_vocab_size": 32000,
-  "num_special_tokens": 1000,
+  "attention_bias": false,
+  "base_vocab_size": 242612,
+  "num_special_tokens": 13388,
   "num_short_term_slots": 20,
   "num_long_term_slots": 10,
-  "memory_dim": 64
+  "memory_dim": 64,
+  "active_heads": null
 }

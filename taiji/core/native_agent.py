@@ -187,7 +187,7 @@ class NativeAgentEngine:
                         prompt_parts.append(f"<think>{prev_step.thought}</think>")
                     if prev_step.action:
                         args_str = json.dumps(prev_step.action_args, ensure_ascii=False)
-                        prompt_parts.append(f"<tool_call>{prev_step.action} {args_str}")
+                        prompt_parts.append(f"<tool_call>{prev_step.action} {args_str}</tool_call>")
                     if prev_step.observation:
                         prompt_parts.append(f"<tool_result>{prev_step.observation[:300]}</tool_result>")
 

@@ -123,6 +123,13 @@ class AppState:
                 self.taiji_engine = None
                 self._is_taiji = False
 
+            if self._taiji_bridge is not None:
+                try:
+                    self._taiji_bridge.cleanup()
+                except Exception as e:
+                    logger.warning(f"Cleanup taiji bridge failed: {e}")
+                self._taiji_bridge = None
+
             # 1. 卸载 GGUF 引擎（如果存在）
             old_trainer = self.trainer
             if old_trainer is not None:

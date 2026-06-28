@@ -36,6 +36,9 @@ class TaijiNativeTokenizerV2:
         self.text_offset = int(self.contract["text_offset"])
         self.text_vocab_size = int(self.contract["text_vocab_size"])
         self.total_vocab_size = int(self.contract["total_vocab_size"])
+        tool_tokens = self.contract.get("tool_tokens", {"start": 190, "count": 750})
+        self._tool_start = int(tool_tokens["start"])
+        self._tool_limit = self._tool_start + int(tool_tokens["count"])
 
         self.special_text_to_id: Dict[str, int] = {
             k: int(v) for k, v in self.contract["special_tokens"].items()
@@ -50,10 +53,11 @@ class TaijiNativeTokenizerV2:
             for i in range(count):
                 self.special_text_to_id[pattern.format(i=i)] = start + i
 
+        self._tool_name_to_id: Dict[str, int] = {}
+        self._id_to_tool_name: Dict[int, str] = {}
+        self._next_tool_id = self._tool_start
         self.special_id_to_text = {v: k for k, v in self.special_text_to_id.items()}
-        self._special_tokens_by_length = sorted(
-            self.special_text_to_id.keys(), key=len, reverse=True
-        )
+        self._refresh_special_index()
 
         self.sp = spm.SentencePieceProcessor()
         self.sp.Load(self.sp_model_path)
@@ -83,9 +87,45 @@ class TaijiNativeTokenizerV2:
     def eos_token_id(self) -> int:
         return self.special_text_to_id["</s>"]
 
-    def encode(self, text: str, add_bos: bool = False, add_eos: bool = False) -> List[int]:
+    def _refresh_special_index(self) -> None:
+        self.special_id_to_text = {v: k for k, v in self.special_text_to_id.items()}
+        self._special_tokens_by_length = sorted(
+            self.special_text_to_id.keys(), key=len, reverse=True
+        )
+
+    def register_tool(self, tool_name: str) -> int:
+        if tool_name in self._tool_name_to_id:
+            return self._tool_name_to_id[tool_name]
+        if self._next_tool_id >= self._tool_limit:
+            raise ValueError(
+                f"Tool token range exhausted: {self._next_tool_id} >= {self._tool_limit}"
+            )
+        token_id = self._next_tool_id
+        self._next_tool_id += 1
+        self._tool_name_to_id[tool_name] = token_id
+        self._id_to_tool_name[token_id] = tool_name
+        self.special_text_to_id[tool_name] = token_id
+        self._refresh_special_index()
+        return token_id
+
+    def get_tool_id(self, tool_name: str) -> Optional[int]:
+        return self._tool_name_to_id.get(tool_name)
+
+    def get_tool_name(self, tool_id: int) -> Optional[str]:
+        return self._id_to_tool_name.get(tool_id)
+
+    def get_all_tool_ids(self) -> Dict[str, int]:
+        return dict(self._tool_name_to_id)
+
+    def encode(
+        self,
+        text: str,
+        add_bos: bool = False,
+        add_eos: bool = False,
+        add_special_tokens: bool = False,
+    ) -> List[int]:
         ids: List[int] = []
-        if add_bos:
+        if add_bos or add_special_tokens:
             ids.append(self.bos_token_id)
 
         pos = 0
@@ -108,9 +148,12 @@ class TaijiNativeTokenizerV2:
             ids.extend(self._encode_text(text[pos:next_pos]))
             pos = next_pos
 
-        if add_eos:
+        if add_eos or add_special_tokens:
             ids.append(self.eos_token_id)
         return ids
+
+    def _encode(self, text: str) -> List[int]:
+        return self.encode(text)
 
     def _encode_text(self, text: str) -> List[int]:
         if not text:
@@ -172,6 +215,14 @@ class TaijiNativeTokenizerV2:
             }
         return {"input_ids": encoded, "attention_mask": attention}
 
+    def convert_tokens_to_ids(self, token: str) -> int:
+        if token in self.special_text_to_id:
+            return self.special_text_to_id[token]
+        sp_id = self.sp.PieceToId(token)
+        if sp_id == self.sp.unk_id():
+            return self.unk_token_id
+        return self.text_offset + int(sp_id)
+
     def encode_image(self, raw_ids: torch.Tensor) -> torch.Tensor:
         image = self.contract["multimodal"]["image"]
         return raw_ids.long() + int(image["base"])
@@ -193,12 +244,32 @@ class TaijiNativeTokenizerV2:
         with open(os.path.join(path, "tokenizer_contract.json"), "w", encoding="utf-8") as f:
             json.dump(self.contract, f, indent=2, ensure_ascii=False)
         with open(os.path.join(path, "tokenizer_native_v2.json"), "w", encoding="utf-8") as f:
-            json.dump({"sp_model": "sentencepiece.model"}, f, indent=2)
+            json.dump(
+                {
+                    "sp_model": "sentencepiece.model",
+                    "tool_mappings": self._tool_name_to_id,
+                    "next_tool_id": self._next_tool_id,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
 
     @classmethod
     def load(cls, path: str) -> "TaijiNativeTokenizerV2":
-        return cls(
+        tokenizer = cls(
             sp_model_path=os.path.join(path, "sentencepiece.model"),
             contract_path=os.path.join(path, "tokenizer_contract.json"),
         )
-
+        state_path = os.path.join(path, "tokenizer_native_v2.json")
+        if os.path.exists(state_path):
+            with open(state_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            for tool_name, token_id in state.get("tool_mappings", {}).items():
+                token_id = int(token_id)
+                tokenizer._tool_name_to_id[tool_name] = token_id
+                tokenizer._id_to_tool_name[token_id] = tool_name
+                tokenizer.special_text_to_id[tool_name] = token_id
+            tokenizer._next_tool_id = int(state.get("next_tool_id", tokenizer._next_tool_id))
+            tokenizer._refresh_special_index()
+        return tokenizer

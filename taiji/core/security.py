@@ -389,9 +389,25 @@ class AuthManager:
             return hmac.compare_digest(legacy_hash, self.password_hash)
 
     def login(self, username: str, password: str) -> Optional[str]:
-        """用户登录，返回 JWT Token 或 None"""
+        """用户登录，返回 JWT Token 或 None。
+
+        安全策略：
+        - 认证未启用时：仅当已设置密码时才允许无认证访问（防止默认开放）
+        - 认证启用时：必须提供正确的用户名和密码
+        """
         if not self.enabled:
+            # 如果已设置密码，未启用认证可能是部署失误，拒绝登录并提示
+            if self.password_hash:
+                self._audit.log_event("login_failed", {"user": username, "reason": "auth_disabled_but_password_set"})
+                return None
+            # 密码也未设置 = 全新部署首次使用，允许无密码访问
+            self._audit.log_event("login_noauth_first_run", {"user": username})
             return self._jwt.create_token(username)
+
+        if not self.password_hash:
+            # 认证已启用但未设置密码 → 配置错误
+            self._audit.log_event("login_failed", {"user": username, "reason": "password_not_set"})
+            return None
 
         if username != self.username:
             self._audit.log_event("login_failed", {"user": username, "reason": "invalid_user"})

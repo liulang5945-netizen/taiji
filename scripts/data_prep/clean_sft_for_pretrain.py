@@ -336,7 +336,7 @@ def main():
     print("\n2. 合并清洗后的数据:")
     print("   python scripts/data_prep/merge_cleaned_sft.py")
     print("\n3. 在 Autodl 上开始训练:")
-    print("   accelerate launch --multi_gpu --num_processes 4 taiji/train/autodl_pretrain.py --size 1b --data taiji_data/training_data/sft_merged_clean.jsonl")
+    print("   python taiji/train/finetune_taiji.py")
 
 
 if __name__ == '__main__':
