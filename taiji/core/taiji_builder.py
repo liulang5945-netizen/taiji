@@ -10,6 +10,7 @@ import logging
 import os
 from typing import Any, Optional
 
+from taiji.core.config import get_data_dir
 from taiji.core.taiji_context import TaijiContext
 
 # 模块级导入（而非构造函数内延迟导入）
@@ -111,13 +112,13 @@ class TaijiBuilder:
         try:
             from taiji.agent.memory import MemorySystem
             ms = MemorySystem()
-            ms.load(os.path.join("taiji_data", "memory"))
+            ms.load(get_data_dir("memory"))
             ctx.context_manager.set_memory_system(ms)
         except Exception as e:
             logger.warning("MemorySystem 加载失败（非致命）: %s", e)
 
         ctx.context_manager.set_persistent_path(
-            os.path.join("taiji_data", "memory", "persistent_memory.json")
+            get_data_dir(os.path.join("memory", "persistent_memory.json"))
         )
 
         # 语义记忆（可选）

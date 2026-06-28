@@ -93,6 +93,20 @@ def get_internal_path(relative_path: str) -> str:
     return os.path.join(os.path.abspath("."), relative_path)
 
 
+def get_data_dir(subdir: str = "") -> str:
+    """统一的态极数据目录。
+
+    可通过 TAIJI_DATA_DIR 环境变量覆盖，默认在项目根下的 taiji_data/。
+    所有子系统（记忆、训练数据、RAG、审计日志等）应通过此函数获取路径。
+    """
+    custom = os.environ.get("TAIJI_DATA_DIR", "").strip()
+    if custom:
+        base = custom
+    else:
+        base = os.path.join(get_writable_base_dir(), "taiji_data")
+    return os.path.join(base, subdir) if subdir else base
+
+
 # ======================== 服务配置 ========================
 
 # FastAPI 后端配置
