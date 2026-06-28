@@ -190,6 +190,12 @@ def auto_configure_for_hardware(config, loaded_model=None) -> dict:
     logger.info(f"模型参数量: {params_b:.2f}B（来源: {_param_source}）")
 
     # ── 3. 纯公式计算所有内存项 ──
+    # 常量说明（经验值，基于 NVIDIA/Apple 官方推荐）:
+    #   dtype_per_B:  FP16=2 bytes/param, FP32=4 bytes/param
+    #   quant_ratio: 4-bit≈55%原体积, 8-bit≈110%（含量化开销）
+    #   optim_ratio: LoRA 仅优化 1% 参数，全量训练优化 100%
+    #   headroom:    LoRA 预留 25% 参数量的临时空间，全量预留 200%
+    #   os_reserve:  至少 3GB 或 20% 总内存留给操作系统
     use_fp16 = is_gpu
     dtype_per_B = 2.0 if use_fp16 else 4.0
 
@@ -231,6 +237,11 @@ def auto_configure_for_hardware(config, loaded_model=None) -> dict:
     usable_gb = round(usable_gb, 2)
 
     # ── 6. batch_size 纯公式计算 ──
+    # 常量说明:
+    #   0.12: 每 B 参数在 512 token 序列上的经验激活内存（GB）
+    #   clamp [0.02, 8.0]: 防止极端值
+    #   CPU ×1.8: CPU 推理/训练内存效率比 GPU 差约 80%
+    #   LoRA GPU ×0.7: LoRA 反向传播内存约为全量训练的 70%
     per_sample_gb = params_b * 0.12 * (config.max_length / 512)
     per_sample_gb = max(0.02, min(per_sample_gb, 8.0))
     if not is_gpu:
@@ -245,6 +256,7 @@ def auto_configure_for_hardware(config, loaded_model=None) -> dict:
         config.batch_size = auto_batch
 
     # ── 7. 梯度累积 ──
+    # 目标有效 batch size: clamp(4, 32, 16/params_b) — 小模型用大 batch，大模型用小 batch
     target_effective = max(4, min(32, int(16 / max(0.5, params_b)))) if params_b > 0 else 4
     if config.batch_size < target_effective:
         auto_grad = max(1, target_effective // config.batch_size)
