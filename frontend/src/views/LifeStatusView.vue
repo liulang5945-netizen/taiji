@@ -491,7 +491,7 @@ onUnmounted(() => {
 }
 
 .need-fill.curiosity {
-  background: var(--jade-light);
+  background: var(--success-light);
 }
 
 @keyframes bar-pulse {
@@ -662,7 +662,7 @@ onUnmounted(() => {
 }
 
 .log-feed { border-left-color: var(--danger); }
-.log-sleep { border-left-color: var(--jade-dark); }
+.log-sleep { border-left-color: var(--success); }
 .log-play { border-left-color: var(--success); }
 .log-train { border-left-color: var(--warning); }
 

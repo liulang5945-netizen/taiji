@@ -108,7 +108,7 @@ class MultimodalTrainer:
         # 获取训练锁，防止并发训练导致 inplace 操作冲突
         _app_state = None
         try:
-            from core.app_state import app_state
+            from taiji.core.app_state import app_state
             _app_state = app_state
             if not app_state.try_start_training():
                 logger.warning("其他训练正在进行，无法启动多模态训练")
@@ -162,19 +162,25 @@ class MultimodalTrainer:
 
             for i in range(0, len(data), batch_size):
                 batch = data[i:i + batch_size]
+                optimizer.zero_grad(set_to_none=True)
+                batch_items = 0
                 batch_loss = 0.0
 
                 for item in batch:
                     try:
-                        loss = self._train_single(item, optimizer)
-                        batch_loss += loss
-                        step += 1
+                        loss = self._train_single(item)
+                        if loss is not None:
+                            (loss / len(batch)).backward()  # 梯度累积
+                            batch_loss += loss.item()
+                            batch_items += 1
+                            step += 1
                     except Exception as e:
                         logger.warning(f"训练样本失败: {e}")
                         continue
 
-                if batch_loss > 0:
-                    batch_loss = batch_loss / len(batch)
+                if batch_items > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    optimizer.step()
                     epoch_loss += batch_loss
                     num_batches += 1
 
@@ -202,14 +208,14 @@ class MultimodalTrainer:
             save_model(self.model, self.tokenizer, save_path)
             logger.info(f"多模态模型已保存到 {save_path}")
 
-    def _train_single(self, item: dict, optimizer) -> float:
-        """训练单个样本"""
+    def _train_single(self, item: dict) -> Optional[torch.Tensor]:
+        """训练单个样本（只做前向传播，返回 loss tensor；梯度累积由调用方处理）"""
         modality = item.get("modality", "text")
         messages = item.get("messages", [])
         media_path = item.get("media_path", "")
 
         if not messages:
-            return 0.0
+            return None
 
         # 构建目标文本
         target_text = ""
@@ -219,7 +225,7 @@ class MultimodalTrainer:
                 break
 
         if not target_text:
-            return 0.0
+            return None
 
         # 构建输入 prompt
         prompt_parts = []
@@ -263,15 +269,9 @@ class MultimodalTrainer:
 
         loss = outputs.loss
         if loss is None:
-            return 0.0
+            return None
 
-        # 反向传播
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-        optimizer.step()
-
-        return loss.item()
+        return loss  # 返回 raw tensor，调用方负责 backward
 
     def _encode_image(self, encoder, image_path: str) -> torch.Tensor:
         """编码图像"""

@@ -34,7 +34,8 @@ async def get_life_status():
         }
     except Exception as e:
         logger.error(f"获取生命状态失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.post("/feed")

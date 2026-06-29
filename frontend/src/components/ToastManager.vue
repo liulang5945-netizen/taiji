@@ -89,7 +89,7 @@ defineExpose({ showToast })
 .toast-item.success { background: rgba(16,185,129,0.95); color: white; }
 .toast-item.error { background: rgba(239,68,68,0.95); color: white; }
 .toast-item.warning { background: rgba(245,158,11,0.95); color: white; }
-.toast-item.info { background: rgba(99,102,241,0.95); color: white; }
+.toast-item.info { background: var(--primary); color: white; }
 .toast-icon { font-size: 1.2rem; }
 .toast-msg { flex: 1; line-height: 1.4; }
 .toast-close {

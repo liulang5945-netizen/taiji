@@ -41,7 +41,8 @@ def upload_rag_document(file: UploadFile = File(...), bg_tasks: BackgroundTasks 
         return {"status": "success", "message": f"文件 {file.filename} 已上传，正在后台向量化建库，请稍后查看！"}
     except Exception as e:
         logger.error(f"RAG 添加文件失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.delete("/api/rag/clear")
@@ -55,7 +56,8 @@ async def clear_rag_documents():
         return {"status": "success", "message": "知识库已清空！"}
     except Exception as e:
         logger.error(f"RAG 清空失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.get("/api/rag/files")
@@ -78,7 +80,8 @@ def delete_rag_file(filename: str):
         app_state.rag_kb.rebuild_index()
         return {"status": "success"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 # ======================== RAG 检索策略配置 API ========================
@@ -91,7 +94,8 @@ async def get_rag_config():
         return {"status": "success", "config": config.to_dict()}
     except Exception as e:
         logger.error(f"获取 RAG 配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.put("/api/rag/config")
@@ -117,7 +121,8 @@ async def update_rag_config(updates: dict):
         raise
     except Exception as e:
         logger.error(f"更新 RAG 配置失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.get("/api/rag/status")
@@ -138,7 +143,8 @@ async def get_rag_status():
         }
     except Exception as e:
         logger.error(f"获取 RAG 状态失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.post("/api/rag/search")
@@ -168,4 +174,5 @@ def rag_preview(filename: str):
             return {"content": content}
         return {"content": "(文件不存在)"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")

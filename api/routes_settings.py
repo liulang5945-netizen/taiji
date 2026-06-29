@@ -149,7 +149,8 @@ def get_current_model():
         }
     except Exception as exc:
         logger.warning(f"Failed to get current model info: {exc}")
-        return {"status": "error", "message": str(exc), "loaded": False}
+        logger.error(f"Memory status failed: {exc}")
+        return {"status": "error", "message": "内部错误，请查看日志", "loaded": False}
 
 
 @router.get("/api/system/memory")

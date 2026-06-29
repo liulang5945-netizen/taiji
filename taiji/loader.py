@@ -70,7 +70,13 @@ def load_model(
     weights_path = os.path.join(model_path, "model.pt")
     if os.path.exists(weights_path):
         state_dict = torch.load(weights_path, map_location=device, weights_only=True)
-        model.load_state_dict(state_dict, strict=False)
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        if missing:
+            logger.warning("Missing keys in checkpoint (will use random init): %s", missing)
+        if unexpected:
+            logger.warning("Unexpected keys in checkpoint (ignored): %s", unexpected)
+        # Re-establish weight tying broken by load_state_dict
+        model.lm_head.weight = model.backbone.embedding.weight
         logger.info("Loaded weights from %s", weights_path)
     else:
         logger.warning("No weights found at %s; using random initialization", weights_path)

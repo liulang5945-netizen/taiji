@@ -163,7 +163,7 @@ defineExpose({ queue, handleFiles, removeFromQueue, onDrop, triggerBrowse });
 .upload-dropzone:hover,
 .upload-dropzone.drag-over {
   border-color: var(--primary);
-  background: var(--primary-subtle, rgba(99,102,241,0.08));
+  background: var(--primary-subtle, var(--primary-subtle));
 }
 .dropzone-icon {
   font-size: 2.5rem;

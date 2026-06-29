@@ -5,7 +5,6 @@ from taiji.train.training_utils import EarlyStoppingCriteria, INFERENCE_THREADS,
 from taiji.train.dataset_checker import DatasetQualityChecker
 from taiji.train.dpo_trainer import DPOTrainer
 from taiji.train.multimodal_trainer import MultimodalTrainer
-from taiji.train.data_cleaner import DataCleaner
 
 __all__ = [
     "ModelSelfTrainer",
@@ -20,5 +19,4 @@ __all__ = [
     "DatasetQualityChecker",
     "DPOTrainer",
     "MultimodalTrainer",
-    "DataCleaner",
 ]

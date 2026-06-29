@@ -6,6 +6,11 @@ import torch
 import sys
 import os
 
+import pytest
+
+# These tests build real models and run training loops; only run with --runslow.
+pytestmark = pytest.mark.slow
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 

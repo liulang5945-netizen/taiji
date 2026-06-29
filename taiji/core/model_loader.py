@@ -33,7 +33,13 @@ _auto_reload_inflight = False
 
 def load_model_on_startup() -> None:
     """Load the configured model stack during API startup."""
-    asyncio.run(_async_load_model())
+    try:
+        loop = asyncio.get_running_loop()
+        # 已有事件循环在运行（如 FastAPI lifespan），创建 task
+        loop.create_task(_async_load_model())
+    except RuntimeError:
+        # 无运行中的事件循环，使用 asyncio.run
+        asyncio.run(_async_load_model())
 
 
 async def _async_load_model() -> None:

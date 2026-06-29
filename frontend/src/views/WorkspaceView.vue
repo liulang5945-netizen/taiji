@@ -419,7 +419,7 @@ onUnmounted(() => { document.removeEventListener('click', closeCtx); });
 }
 .dlg-btn:hover { background: var(--bg-hover); color: var(--text); }
 .dlg-btn.primary { border: 0; background: var(--primary-gradient); color: white; }
-.dlg-btn.primary:hover { box-shadow: 0 2px 12px rgba(99,102,241,0.3); }
+.dlg-btn.primary:hover { box-shadow: 0 2px 12px var(--border-strong); }
 .dlg-error { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
 
 .quick-paths { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }

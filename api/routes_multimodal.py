@@ -50,7 +50,8 @@ async def text_to_speech(request: TTSRequest):
             )
         raise HTTPException(status_code=500, detail="语音生成失败")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.get("/api/multimodal/voices")
@@ -97,7 +98,8 @@ async def generate_image(request: ImageGenRequest):
             )
         raise HTTPException(status_code=500, detail="图像生成失败")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 # ======================== 图像描述 ========================
@@ -117,7 +119,8 @@ async def describe_image(request: ImageDescribeRequest):
         description = engine.describe_image(request.image_path)
         return {"description": description}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 # ======================== 状态查询 ========================

@@ -59,4 +59,5 @@ async def execute_workflow(workflow_id: str):
         from dataclasses import asdict
         return {"status": "success", "result": asdict(result)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")

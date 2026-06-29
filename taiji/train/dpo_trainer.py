@@ -146,7 +146,7 @@ class DPOTrainer:
         # 获取训练锁，防止并发训练导致 inplace 操作冲突
         _app_state = None
         try:
-            from core.app_state import app_state
+            from taiji.core.app_state import app_state
             _app_state = app_state
             if not app_state.try_start_training():
                 logger.warning("其他训练正在进行，无法启动 DPO 训练")
@@ -180,7 +180,8 @@ class DPOTrainer:
 
             for i in range(0, len(preference_data), batch_size):
                 batch = preference_data[i:i + batch_size]
-                batch_loss = 0.0
+                optimizer.zero_grad(set_to_none=True)
+                batch_loss = torch.tensor(0.0, device=self.device)
 
                 for pair in batch:
                     # 计算 chosen 的 log probability
@@ -193,11 +194,10 @@ class DPOTrainer:
                     logit = self.beta * (chosen_logprob - rejected_logprob)
                     loss = -F.logsigmoid(logit)
 
-                    batch_loss += loss
+                    batch_loss = batch_loss + loss
 
-                # 反向传播
+                # 反向传播（梯度已在 batch 内累积）
                 batch_loss = batch_loss / len(batch)
-                optimizer.zero_grad(set_to_none=True)
                 batch_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 optimizer.step()
@@ -250,9 +250,8 @@ class DPOTrainer:
         prompt_ids = self.tokenizer(prompt, return_tensors="pt")["input_ids"]
         prompt_len = prompt_ids.shape[1]
 
-        with torch.no_grad():
-            outputs = self.model(input_ids)
-            logits = outputs.logits
+        outputs = self.model(input_ids)
+        logits = outputs.logits
 
         # 取 response 部分的 logits
         response_logits = logits[:, prompt_len - 1:-1, :]  # [1, resp_len, vocab]

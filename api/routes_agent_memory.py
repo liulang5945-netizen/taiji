@@ -17,7 +17,8 @@ def memory_status():
         from taiji.agent_ext.memory_manager import memory
         return {"status": "ok", **memory.get_status()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/agent/memory/context")
@@ -28,7 +29,8 @@ def memory_context(last_n: int = 20):
         context = memory.get_context(last_n)
         return {"status": "ok", "context": context}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/memory/remember")
@@ -44,7 +46,8 @@ async def memory_remember(req: dict):
         memory.remember(text, category=category)
         return {"status": "ok", "message": "已存储到长期记忆"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/memory/recall")
@@ -60,7 +63,8 @@ async def memory_recall(req: dict):
         results = memory.recall(query, top_k=top_k)
         return {"status": "ok", "results": results, "count": len(results)}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/agent/memory/working")
@@ -70,7 +74,8 @@ def memory_working():
         from taiji.agent_ext.memory_manager import memory
         return {"status": "ok", "data": memory.working.get_all(), "keys": memory.working.list_keys()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/memory/working/set")
@@ -85,7 +90,8 @@ async def memory_working_set(req: dict):
         memory.set_working(key, value)
         return {"status": "ok", "message": f"已设置 {key}"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/agent/memory/longterm")
@@ -96,7 +102,8 @@ def memory_longterm_list(category: str = "", limit: int = 50):
         entries = memory.long_term.list_entries(category=category or None, limit=limit)
         return {"status": "ok", "entries": entries, "count": memory.long_term.count()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/memory/clear")
@@ -117,4 +124,5 @@ async def memory_clear(req: dict = {}):
             return {"status": "error", "message": f"未知范围: {scope}"}
         return {"status": "ok", "message": f"已清除 {scope} 记忆"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}

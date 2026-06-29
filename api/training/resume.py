@@ -20,10 +20,10 @@ from taiji.core.utils import get_external_path
 from .common import safe_put
 
 logger = logging.getLogger("ApiServer.Training")
-resume_router = APIRouter()
+router = APIRouter()
 
 
-@resume_router.post("/api/training/resume_checkpoint")
+@router.post("/api/training/resume_checkpoint")
 async def resume_from_checkpoint():
     """从检查点恢复原生训练（SSE 流式进度）。"""
     if app_state.is_training:
@@ -107,7 +107,7 @@ async def resume_from_checkpoint():
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
-@resume_router.get("/api/training/checkpoints")
+@router.get("/api/training/checkpoints")
 def list_checkpoints():
     """列出检查点"""
     ckpt_dir = get_external_path("checkpoints")

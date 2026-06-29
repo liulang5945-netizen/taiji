@@ -85,7 +85,8 @@ def switch_model(req: dict[str, Any]) -> dict[str, Any]:
         }
     except Exception as exc:
         _switch_lock.release()
-        return {"status": "error", "message": f"Failed to start model switch: {exc}"}
+        logger.error(f"Model switch start failed: {exc}")
+        return {"status": "error", "message": "Failed to start model switch"}
 
 
 @router.get("/api/system/switch_status")
@@ -191,7 +192,8 @@ def _do_switch_model(
     except Exception as exc:
         logger.error("Model switch failed: %s", traceback.format_exc())
         app_state.mark_startup_failed(str(exc))
-        return {"status": "error", "message": f"Model switch failed: {exc}"}
+        logger.error(f"Model switch failed: {exc}")
+        return {"status": "error", "message": "Model switch failed"}
 
 
 def _load_self_model_switch(config: TrainingConfig, model_path: str) -> None:

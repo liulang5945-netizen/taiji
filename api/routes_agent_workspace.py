@@ -15,6 +15,29 @@ logger = logging.getLogger("ApiServer.Agent.Workspace")
 router = APIRouter()
 
 
+def _require_admin_auth(request: Request):
+    """Validate admin auth for sensitive operations (e.g. pip install)."""
+    from taiji.core.security import AuthManager
+    auth = AuthManager()
+
+    if not auth.enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="此操作需要启用认证。请先启用认证后再执行此操作。",
+        )
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="缺少认证 Token")
+
+    token = auth_header[7:]
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
+    return payload
+
+
 def _get_workspace_dir() -> str:
     """Return the current workspace directory."""
     custom_path = get_setting("workspace_path", "")
@@ -210,7 +233,8 @@ def run_workspace_code(req: CodeRunRequest):
             "error": result.get("error", ""),
         }
     except Exception as exc:
-        return {"output": f"运行失败: {exc}", "success": False, "error": str(exc)}
+        logger.error(f"Code execution failed: {exc}")
+        return {"output": "", "success": False, "error": "内部错误，请查看日志"}
 
 
 @router.post("/api/workspace/create_project")
@@ -223,7 +247,8 @@ async def create_project(req: CreateProjectRequest):
         result = agent_create_project(f"{req.type} | project_{req.type}")
         return {"status": "ok", "message": result}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(f"Request failed: {exc}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.delete("/api/workspace/delete/{name:path}")
@@ -244,7 +269,8 @@ def delete_workspace_item(name: str):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(f"Request failed: {exc}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.post("/api/agent/analyze_code")
@@ -255,18 +281,21 @@ async def analyze_code_api(req: CodeRunRequest):
     try:
         return {"result": analyze_code(req.code)}
     except Exception as exc:
-        return {"result": f"分析失败: {exc}"}
+        logger.error(f"Analyze failed: {exc}")
+        return {"result": "分析失败"}
 
 
 @router.post("/api/agent/install_dependency")
-async def install_dependency_api(req: CodeRunRequest):
-    """Install a dependency through the agent helper."""
+async def install_dependency_api(req: CodeRunRequest, request: Request):
+    """Install a dependency through the agent helper (admin only)."""
+    _require_admin_auth(request)
     from taiji.agent_ext.agent import install_dependency
 
     try:
         return {"result": install_dependency(req.code)}
     except Exception as exc:
-        return {"result": f"安装失败: {exc}"}
+        logger.error(f"install_dependency failed: {exc}")
+        return {"result": "安装失败，请查看日志"}
 
 
 @router.get("/api/agent/plans")
@@ -277,7 +306,8 @@ def list_plans_api():
     try:
         return {"plans": list_plans("")}
     except Exception as exc:
-        return {"plans": f"获取失败: {exc}"}
+        logger.error(f"List plans failed: {exc}")
+        return {"plans": "获取失败"}
 
 
 @router.get("/api/agent/context")
@@ -288,7 +318,8 @@ def load_context_api(key: str = ""):
     try:
         return {"context": load_context(key)}
     except Exception as exc:
-        return {"context": f"读取失败: {exc}"}
+        logger.error(f"Load context failed: {exc}")
+        return {"context": "读取失败"}
 
 
 @router.post("/api/agent/save_context")
@@ -299,7 +330,8 @@ async def save_context_api(req: CodeRunRequest):
     try:
         return {"result": save_context(req.code)}
     except Exception as exc:
-        return {"result": f"保存失败: {exc}"}
+        logger.error(f"Save context failed: {exc}")
+        return {"result": "保存失败"}
 
 
 @router.post("/api/plugins/upload")
@@ -317,7 +349,8 @@ async def upload_plugin(file: UploadFile = File(...)):
         }
     except Exception as exc:
         logger.error(f"插件安装失败: {exc}")
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error(f"Request failed: {exc}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.get("/api/workspace/quick_paths")
@@ -353,5 +386,3 @@ def get_quick_paths():
 def network_diagnose():
     """Network diagnostics (native Taiji — no remote model downloads needed)."""
     return {"status": "ok", "diagnosis": {"message": "原生态极运行于本地，无需远程模型下载诊断"}}
-        logger.error(f"网络诊断失败: {exc}")
-        return {"status": "error", "message": str(exc)}

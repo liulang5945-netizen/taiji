@@ -286,7 +286,6 @@ export async function startTraining(toast) {
           } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
-    }
   } catch (err) {
     if (err.name !== 'AbortError') {
       trainLog.value += `❌ ${err.message}\n`;
@@ -452,7 +451,6 @@ export async function resumeFromCheckpoint(toast, $confirm) {
           } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
-    }
   } catch (err) {
     if (err.name !== 'AbortError') {
       trainLog.value += `❌ ${err.message}\n`;
@@ -549,7 +547,6 @@ async function publishStreamCommon(toast, onStartMsg) {
             autoScrollTrainLog();
           }
         }
-      }
       if (completed) break;
     }
 
@@ -644,7 +641,6 @@ export async function exportModelToGGUF(toast, $confirm) {
           } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
-    }
   } catch (e) { toast(`❌ ${e.message}`, 'error'); }
   finally { publishingState.value = 'idle'; }
 }
@@ -858,7 +854,6 @@ export async function startTaijiTraining(toast) {
           } catch (e) { console.debug('[useTraining] parse error:', e.message) } /* skip */ }
         }
       }
-    }
   } catch (err) {
     if (err.name !== 'AbortError') {
       trainLog.value += `❌ ${err.message}\n`;

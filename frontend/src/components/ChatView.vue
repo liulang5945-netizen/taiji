@@ -97,7 +97,7 @@
 
         <!-- 多模态工具栏 -->
         <div class="multimodal-toolbar">
-          <button class="mm-btn" :class="{ active: isRecording }" @click="toggleVoice" title="语音输入">
+          <button class="mm-btn" :class="{ active: isRecording }" @click="toggleVoice" disabled title="语音输入">
             <Mic :size="16" />
             <span class="mm-label">{{ isRecording ? '停止' : '语音' }}</span>
           </button>
@@ -116,7 +116,7 @@
             <span class="mm-label">文件</span>
             <input type="file" multiple @change="onFileSelect" style="display:none" />
           </label>
-          <button class="mm-btn" @click="toggleCamera" title="拍照/录像">
+          <button class="mm-btn" @click="toggleCamera" disabled title="拍照/录像">
             <Camera :size="16" />
             <span class="mm-label">拍照</span>
           </button>
@@ -341,7 +341,7 @@ onMounted(scrollToBottom)
   border-color: var(--primary-light);
   font-weight: 600;
 }
-.life-chip.sleeping { color: var(--jade-dark); }
+.life-chip.sleeping { color: var(--success); }
 .life-chip.feeding { color: var(--warning); }
 .life-chip.playing { color: var(--success); }
 
@@ -528,6 +528,8 @@ onMounted(scrollToBottom)
 }
 .mm-btn:hover { color: var(--primary-hover); border-color: var(--primary-light); background: var(--primary-subtle); }
 .mm-btn.active { color: var(--danger); border-color: var(--danger); background: var(--danger-light); }
+.mm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mm-btn:disabled:hover { color: var(--text-secondary); border-color: var(--border); background: var(--bg-card); }
 .mm-label { font-size: 11px; }
 
 .stop-container { display: flex; justify-content: center; margin-bottom: 8px; }
@@ -540,7 +542,7 @@ onMounted(scrollToBottom)
 
 .input-container {
   display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; gap: 8px;
-  padding: 11px 12px 11px 14px; border: 1px solid var(--border); border-radius: 18px;
+  padding: 11px 12px 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--bg-input); transition: var(--transition-fast); box-shadow: var(--shadow-sm);
 }
 .input-container:focus-within { border-color: var(--primary); box-shadow: var(--shadow-glow); }
@@ -554,7 +556,7 @@ textarea::placeholder { color: var(--text-muted); }
 
 .send-btn {
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 14px; background: var(--primary); color: #ffffff;
+  border: 0; border-radius: var(--radius-sm); background: var(--primary); color: #ffffff;
   box-shadow: none; cursor: pointer; transition: var(--transition-fast);
 }
 .send-btn:hover:not(:disabled) { background: var(--primary-hover); }

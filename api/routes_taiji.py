@@ -605,7 +605,8 @@ def self_mod_status():
         engine = get_self_modification_engine()
         return {"status": "ok", **engine.get_status()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/taiji/self_mod/discover")
@@ -620,7 +621,8 @@ async def self_mod_discover(req: dict):
         matches = engine._discovery.find_matching_tools(keyword)
         return {"status": "ok", "matches": matches, "count": len(matches)}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/taiji/self_mod/toggle")
@@ -636,7 +638,8 @@ async def self_mod_toggle(req: dict):
             engine.disable()
         return {"status": "ok", "enabled": engine._enabled}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/taiji/life/timeline")
@@ -679,7 +682,9 @@ def _load_dataset_files(file_names: list, _safe_put=None) -> tuple:
         # 在所有数据目录中查找文件
         fpath = None
         for data_dir in data_dirs:
-            candidate = os.path.join(data_dir, fname)
+            candidate = os.path.abspath(os.path.join(data_dir, fname))
+            if not candidate.startswith(os.path.abspath(data_dir) + os.sep):
+                continue
             if os.path.exists(candidate):
                 fpath = candidate
                 break

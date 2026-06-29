@@ -81,7 +81,8 @@ async def cancel_agent():
         message = agent_service.cancel_active_task()
         return {"status": "ok", "message": message}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 # ======================== 工具注册表 ========================
@@ -94,7 +95,8 @@ def list_tool_registry():
         return {"status": "ok", "tools": schemas, "count": len(schemas)}
     except Exception as e:
         logger.error(f"获取工具注册表失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/tools/execute")
@@ -109,7 +111,8 @@ async def run_tool(req: dict):
         result = execute_tool(tool_name, tool_args)
         return {"status": "ok", "result": result}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 # ======================== 多 Agent 协作 ========================
@@ -120,7 +123,8 @@ def list_roles():
     try:
         return {"status": "ok", "roles": agent_service.list_roles(), "count": len(agent_service.list_roles())}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/agent/collaborate")
@@ -144,7 +148,8 @@ def list_collab_tasks():
     try:
         return {"status": "ok", "tasks": agent_service.list_collab_tasks()}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/agent/collaborate/messages")
@@ -154,4 +159,5 @@ def collab_messages(topic: str = "", limit: int = 50):
         messages = agent_service.get_collab_messages(topic=topic, limit=limit)
         return {"status": "ok", "messages": messages, "count": len(messages)}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}

@@ -7,6 +7,8 @@ import json
 import logging
 import math
 import os
+import random
+import threading
 import time
 from contextlib import nullcontext
 from typing import Any, Generator, Optional
@@ -340,9 +342,10 @@ class ModelSelfTrainer:
 
         self.global_step = 0
         self.best_loss = float("inf")
-        self.is_paused = False
-        self.is_stopped = False
+        self.is_paused = threading.Event()
+        self.is_stopped = threading.Event()
         self.loss_history: list[float] = []
+        self._max_loss_history = 5000
 
         self.early_stopping_patience = 3
         self.early_stopping_threshold = 1e-3
@@ -352,6 +355,7 @@ class ModelSelfTrainer:
         self._stagnant_window = 50
         self._stagnant_threshold = 0.01
         self._bottleneck_detected = False
+        self._last_saved_step = -1
 
         self._sync_num_tools()
 
@@ -395,13 +399,15 @@ class ModelSelfTrainer:
             1,
         )
         self._setup_scheduler(total_updates)
-        self.freeze_heads(exclude=["language"])
+        self.freeze_heads()  # 冻结 tool/perception/memory/plan heads，仅训练 backbone + lm_head
         self.model.to(device)
         self.model.train()
         os.makedirs(save_dir, exist_ok=True)
 
         self._patience_counter = 0
         self._bottleneck_detected = False
+        torch.manual_seed(42)
+        random.seed(42)
         loss_history = list(self.loss_history)
         scaler = _create_grad_scaler(device)
         train_start = time.time()
@@ -412,11 +418,11 @@ class ModelSelfTrainer:
             self.optimizer.zero_grad(set_to_none=True)
 
             for batch_idx, batch in enumerate(dataloader):
-                if self.is_stopped:
+                if self.is_stopped.is_set():
                     return
 
-                while self.is_paused and not self.is_stopped:
-                    time.sleep(0.1)
+                while self.is_paused.is_set() and not self.is_stopped.is_set():
+                    self.is_paused.wait(timeout=0.5)
                     yield (
                         self.global_step / max(total_updates, 1),
                         "预训练已暂停",
@@ -472,6 +478,8 @@ class ModelSelfTrainer:
                 avg_loss = epoch_loss / max(batch_count, 1)
                 if self.global_step % max(log_steps, 1) == 0 or batch_idx + 1 == len(dataloader):
                     loss_history.append(avg_loss)
+                    if len(loss_history) > self._max_loss_history:
+                        loss_history = loss_history[-self._max_loss_history:]
                     self.loss_history = list(loss_history)
                     elapsed = time.time() - train_start
                     eta = (elapsed / self.global_step) * max(total_updates - self.global_step, 0)
@@ -563,6 +571,8 @@ class ModelSelfTrainer:
         os.makedirs(save_dir, exist_ok=True)
 
         self._patience_counter = 0
+        torch.manual_seed(42)
+        random.seed(42)
         loss_history = list(self.loss_history)
         scaler = _create_grad_scaler(device)
         train_start = time.time()
@@ -573,11 +583,11 @@ class ModelSelfTrainer:
             self.optimizer.zero_grad(set_to_none=True)
 
             for batch_idx, batch in enumerate(dataloader):
-                if self.is_stopped:
+                if self.is_stopped.is_set():
                     return
 
-                while self.is_paused and not self.is_stopped:
-                    time.sleep(0.1)
+                while self.is_paused.is_set() and not self.is_stopped.is_set():
+                    self.is_paused.wait(timeout=0.5)
                     yield (
                         self.global_step / max(total_updates, 1),
                         "微调已暂停",
@@ -640,6 +650,8 @@ class ModelSelfTrainer:
                 avg_loss = epoch_loss / max(batch_count, 1)
                 if self.global_step % max(log_steps, 1) == 0 or batch_idx + 1 == len(dataloader):
                     loss_history.append(avg_loss)
+                    if len(loss_history) > self._max_loss_history:
+                        loss_history = loss_history[-self._max_loss_history:]
                     self.loss_history = list(loss_history)
                     elapsed = time.time() - train_start
                     eta = (elapsed / self.global_step) * max(total_updates - self.global_step, 0)
@@ -798,6 +810,9 @@ class ModelSelfTrainer:
         }
 
     def _save_checkpoint(self, save_dir: str, loss: float) -> None:
+        if self.global_step == self._last_saved_step:
+            return  # 同一步内不重复保存
+        self._last_saved_step = self.global_step
         checkpoint_dir = os.path.join(save_dir, f"step_{self.global_step}")
         save_model(self.model, self.tokenizer, checkpoint_dir, self._training_state())
         if loss <= self.best_loss:
@@ -888,13 +903,13 @@ class ModelSelfTrainer:
         return losses
 
     def pause(self) -> None:
-        self.is_paused = True
+        self.is_paused.set()
 
     def resume(self) -> None:
-        self.is_paused = False
+        self.is_paused.clear()
 
     def stop(self) -> None:
-        self.is_stopped = True
+        self.is_stopped.set()
 
     def _check_bottleneck(self, loss_history: list[float]) -> dict[str, Any]:
         if not self._bottleneck_enabled:

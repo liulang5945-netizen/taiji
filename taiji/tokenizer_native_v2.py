@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -56,6 +57,7 @@ class TaijiNativeTokenizerV2:
         self._tool_name_to_id: Dict[str, int] = {}
         self._id_to_tool_name: Dict[int, str] = {}
         self._next_tool_id = self._tool_start
+        self._tool_lock = threading.Lock()
         self.special_id_to_text = {v: k for k, v in self.special_text_to_id.items()}
         self._refresh_special_index()
 
@@ -94,19 +96,20 @@ class TaijiNativeTokenizerV2:
         )
 
     def register_tool(self, tool_name: str) -> int:
-        if tool_name in self._tool_name_to_id:
-            return self._tool_name_to_id[tool_name]
-        if self._next_tool_id >= self._tool_limit:
-            raise ValueError(
-                f"Tool token range exhausted: {self._next_tool_id} >= {self._tool_limit}"
-            )
-        token_id = self._next_tool_id
-        self._next_tool_id += 1
-        self._tool_name_to_id[tool_name] = token_id
-        self._id_to_tool_name[token_id] = tool_name
-        self.special_text_to_id[tool_name] = token_id
-        self._refresh_special_index()
-        return token_id
+        with self._tool_lock:
+            if tool_name in self._tool_name_to_id:
+                return self._tool_name_to_id[tool_name]
+            if self._next_tool_id >= self._tool_limit:
+                raise ValueError(
+                    f"Tool token range exhausted: {self._next_tool_id} >= {self._tool_limit}"
+                )
+            token_id = self._next_tool_id
+            self._next_tool_id += 1
+            self._tool_name_to_id[tool_name] = token_id
+            self._id_to_tool_name[token_id] = tool_name
+            self.special_text_to_id[tool_name] = token_id
+            self._refresh_special_index()
+            return token_id
 
     def get_tool_id(self, tool_name: str) -> Optional[int]:
         return self._tool_name_to_id.get(tool_name)
@@ -123,30 +126,35 @@ class TaijiNativeTokenizerV2:
         add_bos: bool = False,
         add_eos: bool = False,
         add_special_tokens: bool = False,
+        allow_special: bool = True,
     ) -> List[int]:
         ids: List[int] = []
         if add_bos or add_special_tokens:
             ids.append(self.bos_token_id)
 
-        pos = 0
-        while pos < len(text):
-            matched = None
-            for token in self._special_tokens_by_length:
-                if text.startswith(token, pos):
-                    matched = token
-                    break
-            if matched is not None:
-                ids.append(self.special_text_to_id[matched])
-                pos += len(matched)
-                continue
+        if not allow_special:
+            # 用户输入模式：不解析特殊 token，纯 SentencePiece 编码
+            ids.extend(self._encode_text(text))
+        else:
+            pos = 0
+            while pos < len(text):
+                matched = None
+                for token in self._special_tokens_by_length:
+                    if text.startswith(token, pos):
+                        matched = token
+                        break
+                if matched is not None:
+                    ids.append(self.special_text_to_id[matched])
+                    pos += len(matched)
+                    continue
 
-            next_pos = len(text)
-            for token in self._special_tokens_by_length:
-                found = text.find(token, pos + 1)
-                if found != -1:
-                    next_pos = min(next_pos, found)
-            ids.extend(self._encode_text(text[pos:next_pos]))
-            pos = next_pos
+                next_pos = len(text)
+                for token in self._special_tokens_by_length:
+                    found = text.find(token, pos + 1)
+                    if found != -1:
+                        next_pos = min(next_pos, found)
+                ids.extend(self._encode_text(text[pos:next_pos]))
+                pos = next_pos
 
         if add_eos or add_special_tokens:
             ids.append(self.eos_token_id)

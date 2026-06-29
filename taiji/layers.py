@@ -34,15 +34,17 @@ class RotaryEmbedding(nn.Module):
         self.register_buffer("freqs", freqs, persistent=False)
         # 使用 OrderedDict 作为 LRU 缓存，最多保留 4 个条目
         from collections import OrderedDict
+        import threading as _threading
         self._cache = OrderedDict()
         self._max_cache_size = 4
+        self._cache_lock = _threading.Lock()
 
     def _get_sin_cos(self, seq_len: int, device, dtype):
         key = (seq_len, device, dtype)
-        if key in self._cache:
-            # 移到末尾（最近使用）
-            self._cache.move_to_end(key)
-            return self._cache[key]
+        with self._cache_lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
 
         pos = torch.arange(seq_len, device=device, dtype=torch.float32)
         angles = torch.outer(pos, self.freqs.to(device))
@@ -50,11 +52,11 @@ class RotaryEmbedding(nn.Module):
             torch.sin(angles).to(dtype),
             torch.cos(angles).to(dtype),
         )
-        self._cache[key] = result
 
-        # LRU 淘汰：超出限制时删除最旧的缓存
-        while len(self._cache) > self._max_cache_size:
-            self._cache.popitem(last=False)
+        with self._cache_lock:
+            self._cache[key] = result
+            while len(self._cache) > self._max_cache_size:
+                self._cache.popitem(last=False)
 
         return result
 

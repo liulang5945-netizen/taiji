@@ -139,8 +139,13 @@ class InstructionDataset(Dataset):
 
 
 def load_data(data_files, eval_ratio=0.01):
-    """加载并混合数据集"""
-    all_samples = []
+    """加载并混合数据集。
+
+    先按文件分割 train/val，再对训练集做加权采样，防止同一原始样本
+    因有放回采样同时出现在训练集和验证集中（数据泄漏）。
+    """
+    all_train = []
+    all_eval = []
 
     for entry in data_files:
         path = entry["path"]
@@ -159,32 +164,41 @@ def load_data(data_files, eval_ratio=0.01):
                     continue
                 try:
                     item = json.loads(line)
-                    # 验证数据格式
                     if "messages" in item or "instruction" in item:
                         samples.append(item)
                 except json.JSONDecodeError:
                     continue
 
-        # 按权重复制（简单实现：重复添加）
-        weighted_count = int(len(samples) * weight)
-        sampled = random.choices(samples, k=weighted_count)
-        all_samples.extend(sampled)
+        if not samples:
+            continue
 
-        logger.info(f"  {name}: {len(samples)} 样本, 权重 {weight}x -> {weighted_count}")
+        # 先 shuffle，再按文件分割 train/val
+        random.shuffle(samples)
+        file_eval_count = max(1, int(len(samples) * eval_ratio))
+        file_eval_count = min(file_eval_count, len(samples) - 1)
+        file_eval = samples[:file_eval_count]
+        file_train = samples[file_eval_count:]
 
-    random.shuffle(all_samples)
+        # 对训练集做加权采用（有放回），验证集保持原始分布
+        weighted_count = int(len(file_train) * weight)
+        if weighted_count > 0:
+            sampled = random.choices(file_train, k=weighted_count)
+            all_train.extend(sampled)
+        all_eval.extend(file_eval)
 
-    if len(all_samples) < 2:
-        raise RuntimeError("Need at least 2 finetuning samples after loading data.")
+        logger.info(f"  {name}: {len(samples)} 样本, train×{weight} -> {weighted_count}, val -> {len(file_eval)}")
 
-    # 分割训练/验证
-    eval_count = max(1, int(len(all_samples) * eval_ratio))
-    eval_count = min(eval_count, len(all_samples) - 1)
-    eval_samples = all_samples[:eval_count]
-    train_samples = all_samples[eval_count:]
+    random.shuffle(all_train)
+    random.shuffle(all_eval)
 
-    logger.info(f"总计: {len(train_samples)} 训练 + {len(eval_samples)} 验证")
-    return train_samples, eval_samples
+    if len(all_train) < 1:
+        raise RuntimeError("Need at least 1 training sample after loading data.")
+    if len(all_eval) < 1:
+        logger.warning("验证集为空；将使用训练集的一个子集作为验证集")
+        all_eval = all_train[:max(1, int(len(all_train) * eval_ratio))]
+
+    logger.info(f"总计: {len(all_train)} 训练 + {len(all_eval)} 验证")
+    return all_train, all_eval
 
 
 # ======================== 训练 ========================
@@ -283,6 +297,7 @@ def train():
     while step < CONFIG["max_steps"]:
         epoch += 1
         logger.info(f"--- Epoch {epoch} ---")
+        optimizer.zero_grad()
 
         for batch in train_loader:
             if step >= CONFIG["max_steps"]:

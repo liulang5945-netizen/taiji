@@ -192,7 +192,8 @@ def select_folder():
             return {"status": "cancel"}
     except Exception as e:
         logger.error(f"选择文件夹失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/system/select_file")
@@ -237,7 +238,8 @@ def select_file():
             return {"status": "cancel"}
     except Exception as e:
         logger.error(f"选择文件失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/open_folder")
@@ -251,4 +253,5 @@ def open_folder(req: dict):
             os.startfile(path)
         return {"status": "ok"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}

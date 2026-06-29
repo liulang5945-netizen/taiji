@@ -191,6 +191,10 @@ class MemoryWatchdog:
         self._backoff_sequence = [2, 4, 8, 16, 30]
         self._paused_by_watchdog = False
 
+        # pynvml 懒初始化（避免每 2 秒 init/shutdown 导致驱动泄漏）
+        self._nvml_handle = None
+        self._nvml_device_index = 0
+
         # 后台轮询线程
         self._running = True
         self._poll_thread = threading.Thread(target=self._poll_loop, name="MemoryWatchdogPoller", daemon=True)
@@ -300,6 +304,19 @@ class MemoryWatchdog:
         except Exception:
             pass
 
+    def _get_nvml_temp(self, device_index: int = 0) -> float:
+        """懒初始化 pynvml 并获取 GPU 温度，复用 handle 避免驱动泄漏。"""
+        try:
+            import pynvml
+            if self._nvml_handle is None:
+                pynvml.nvmlInit()
+                self._nvml_handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
+                self._nvml_device_index = device_index
+            return float(pynvml.nvmlDeviceGetTemperature(
+                self._nvml_handle, pynvml.NVML_TEMPERATURE_GPU))
+        except Exception:
+            return 0.0
+
     def _poll_gpu(self) -> GpuStatus:
         """
         采集 GPU 显存状态。
@@ -320,16 +337,8 @@ class MemoryWatchdog:
                 free_actual = total - allocated
                 util_pct = allocated / total if total > 0 else 0.0
                 name = torch.cuda.get_device_name(device)
-                # 温度：torch 不直接提供，尝试 pynvml
-                temp = 0.0
-                try:
-                    import pynvml
-                    pynvml.nvmlInit()
-                    handle = pynvml.nvmlDeviceGetHandleByIndex(device)
-                    temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-                    pynvml.nvmlShutdown()
-                except Exception:
-                    pass
+                # 温度：通过懒初始化 pynvml 获取（复用 handle）
+                temp = self._get_nvml_temp(device)
                 # 计算显存哨兵级别（与 RAM 同阈值）
                 free_pct = free_actual / total if total > 0 else 1.0
                 level = self._calc_level(free_pct, "stable")
@@ -347,18 +356,19 @@ class MemoryWatchdog:
         # 方式 2：通过 pynvml（独立于 torch 的 NVIDIA 管理库）
         try:
             import pynvml
-            pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            name = pynvml.nvmlDeviceGetName(handle)
+            if self._nvml_handle is None:
+                pynvml.nvmlInit()
+                self._nvml_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(self._nvml_handle)
+            name = pynvml.nvmlDeviceGetName(self._nvml_handle)
             if isinstance(name, bytes):
                 name = name.decode("utf-8")
             total = info.total / (1024 ** 3)
             used = info.used / (1024 ** 3)
             free = info.free / (1024 ** 3)
             util_pct = used / total if total > 0 else 0.0
-            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-            pynvml.nvmlShutdown()
+            temp = float(pynvml.nvmlDeviceGetTemperature(
+                self._nvml_handle, pynvml.NVML_TEMPERATURE_GPU))
             free_pct = free / total if total > 0 else 1.0
             level = self._calc_level(free_pct, "stable")
             return GpuStatus(
@@ -375,8 +385,15 @@ class MemoryWatchdog:
         return GpuStatus.fallback()
 
     def stop(self):
-        """停止后台轮询线程（程序退出时调用）"""
+        """停止后台轮询线程并清理 pynvml 资源（程序退出时调用）"""
         self._running = False
+        if self._nvml_handle is not None:
+            try:
+                import pynvml
+                pynvml.nvmlShutdown()
+            except Exception:
+                pass
+            self._nvml_handle = None
 
     # ── 级别计算 ──
 

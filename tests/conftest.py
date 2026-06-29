@@ -190,6 +190,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         reason = _LEGACY_MANUAL_TEST_MODULES.get(normalized)
         if reason:
             item.add_marker(pytest.mark.skip(reason=reason))
+        if not config.getoption("--runslow") and item.get_closest_marker("slow"):
+            item.add_marker(pytest.mark.skip(reason="needs --runslow to run heavy tests"))
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the --runslow flag for opting into heavy model-training tests."""
+    parser.getgroup("taiji").addoption(
+        "--runslow",
+        action="store_true",
+        default=False,
+        help="run slow tests (model training, dataset generation, etc.)",
+    )
 
 
 @pytest.fixture

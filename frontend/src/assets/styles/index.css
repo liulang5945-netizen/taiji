@@ -16,7 +16,7 @@
 /* Shell 布局（app-wrapper、sidebar、main-content、router-wrapper） */
 @import './shell.css';
 
-/* [DEPRECATED] 旧页面样式，逐步迁移到 shell.css 和组件 scoped CSS */
+/* ??? 旧页面样式，逐步迁移到 shell.css 和组件 scoped CSS */
 @import '../app.css';
 
 /* [FROZEN] 主题覆盖层，不再新增规则 */

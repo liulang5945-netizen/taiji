@@ -14,6 +14,9 @@ from pathlib import Path
 import pytest
 
 from taiji.core.inference import NativeInferenceEngine
+
+# These tests create real models and run training; only run with --runslow.
+pytestmark = pytest.mark.slow
 from taiji.data.data_generator import (
     generate_bulk_conversation_data,
     generate_bulk_react_data,

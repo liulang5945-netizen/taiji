@@ -60,7 +60,6 @@ export function useApi() {
       return await resp.json();
     } catch (e) { console.debug('[useApi] bootstrap check failed:', e.message) }
       return null;
-    }
   }
 
   async function checkHealth() {

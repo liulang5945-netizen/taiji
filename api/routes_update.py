@@ -109,7 +109,8 @@ def check_update(req: dict = {}):
             }
     except Exception as e:
         logger.error(f"检查更新失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/apply_update")
@@ -131,7 +132,8 @@ def apply_update(request: Request, req: dict = {}):
         return {"status": "ok", "message": "更新已开始下载安装，请稍候..."}
     except Exception as e:
         logger.error(f"应用更新失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/upload_update")
@@ -172,7 +174,8 @@ async def upload_update(request: Request, file: UploadFile = File(...)):
         return {"status": "success", "message": "更新包已上传，正在安装..."}
     except Exception as e:
         logger.error(f"上传更新包失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/reload_modules")
@@ -198,7 +201,8 @@ def reload_modules(req: dict, request: Request):
         }
     except Exception as e:
         logger.error(f"重载模块失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/set_update_url")
@@ -215,7 +219,8 @@ def set_update_url(req: dict, request: Request):
         return {"status": "ok", "message": f"更新地址已设置为: {url}"}
     except Exception as e:
         logger.error(f"设置更新地址失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.get("/api/system/patches")
@@ -240,7 +245,8 @@ def list_patches():
         return {"status": "ok", "patches": [], "patch_details": []}
     except Exception as e:
         logger.error(f"列出补丁失败: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Request failed: {e}")
+        return {"status": "error", "message": "内部错误，请查看日志"}
 
 
 @router.post("/api/system/upload_patch")
@@ -297,7 +303,8 @@ async def upload_patch(request: Request, file: UploadFile = File(...), target_pa
         }
     except Exception as e:
         logger.error(f"上传补丁失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
 
 
 @router.post("/api/system/upload_ui")
@@ -326,4 +333,5 @@ async def upload_ui_zip(request: Request, file: UploadFile = File(...)):
         return {"status": "success", "message": "界面补丁包部署完毕！2秒后将自动刷新界面立刻生效！"}
     except Exception as e:
         logger.error(f"UI更新失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Request failed: {e}")
+        return HTTPException(status_code=500, detail="内部错误，请查看日志")
