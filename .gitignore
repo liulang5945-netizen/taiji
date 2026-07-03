@@ -56,7 +56,9 @@ user_data/
 rag_data/
 knowledge_store/
 agent_workspace/
-taiji/data/
+taiji/data/*
+!taiji/data/__init__.py
+!taiji/data/*.py
 taiji/evolution_data/
 taiji/feed_data/
 taiji/life_data/

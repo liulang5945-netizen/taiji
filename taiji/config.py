@@ -189,7 +189,7 @@ class SpecialTokenResolver:
 def get_taiji_data_path(subdir: str) -> str:
     """Return a writable Taiji data directory, preferring the active model folder."""
     try:
-        from core.app_state import app_state
+        from taiji.core.app_state import app_state
 
         model_path = getattr(app_state, "_loaded_model_name", "") or ""
         if model_path and os.path.isdir(model_path):
@@ -201,7 +201,7 @@ def get_taiji_data_path(subdir: str) -> str:
         pass
 
     try:
-        from core.config import get_external_path
+        from taiji.core.config import get_external_path
 
         base = get_external_path(os.path.join("taiji_data", subdir))
     except Exception:
