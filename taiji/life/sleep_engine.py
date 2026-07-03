@@ -53,6 +53,7 @@ class SleepConfig:
     training_enabled: bool = True            # 睡眠时是否训练
     max_training_steps: int = 50             # 睡眠时最大训练步数
     save_checkpoints: bool = True            # 睡眠时保存 checkpoint
+    auto_generation_transition: bool = False  # 代际迁移（需手动开启，默认关闭）
 
 
 class SleepEngine:
@@ -672,6 +673,39 @@ class SleepEngine:
                     )
                     logger.info(f"  Next generation designed: {next_gen_design['next_gen_name']} "
                                f"(direction: {next_gen_design['evolution_direction']})")
+
+                    # ── 第三层闭环：执行代际迁移 ──
+                    if self.config.auto_generation_transition:
+                        try:
+                            logger.info("  启动代际迁移（知识蒸馏）...")
+                            model = self._get_model()
+                            tokenizer = self._get_tokenizer()
+
+                            if model is not None and tokenizer is not None:
+                                training_texts = self._collect_training_texts()
+                                result = engine.execute_generation_transition(
+                                    design=next_gen_design,
+                                    current_model=model,
+                                    current_tokenizer=tokenizer,
+                                    training_texts=training_texts,
+                                    device=self._get_device(),
+                                )
+                                if result["success"]:
+                                    report.recommendations.append(
+                                        f"[进化] 代际迁移成功: {result['new_model_name']} "
+                                        f"(distill_loss={result['distillation_loss']:.4f})"
+                                    )
+                                    logger.info(f"  代际迁移成功: {result['new_model_name']}")
+                                else:
+                                    report.recommendations.append(
+                                        f"[进化] 代际迁移失败: {result.get('error', 'unknown')}"
+                                    )
+                                    logger.warning(f"  代际迁移失败: {result.get('error')}")
+                            else:
+                                logger.warning("  代际迁移跳过: model 或 tokenizer 不可用")
+                        except Exception as e:
+                            logger.error(f"  代际迁移异常: {e}", exc_info=True)
+                            report.recommendations.append(f"[进化] 代际迁移异常: {e}")
             except ImportError:
                 logger.info("  EvolutionEngine not available for evolution check")
 
@@ -767,6 +801,80 @@ class SleepEngine:
 
         except Exception as e:
             logger.debug(f"  Evolution corpus generation failed: {e}")
+
+    def _collect_training_texts(self) -> list:
+        """收集蒸馏训练用的文本数据。
+
+        从工作记忆、进化语料和最近交互中提取文本列表。
+        """
+        texts = []
+
+        # 1. 从工作记忆收集
+        try:
+            from taiji.agent.working_memory import get_working_memory
+            wm = get_working_memory()
+            entries = wm.get_all()
+            for key, content in entries.items():
+                if isinstance(content, str) and len(content) > 20:
+                    texts.append(content)
+        except ImportError:
+            pass
+
+        # 2. 从进化语料目录读取
+        corpus_dir = os.path.join(self.data_dir, "evolution_corpus")
+        if os.path.isdir(corpus_dir):
+            for fname in sorted(os.listdir(corpus_dir))[-5:]:  # 最近 5 个
+                fpath = os.path.join(corpus_dir, fname)
+                if fname.endswith(".jsonl"):
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            for line in f:
+                                try:
+                                    item = json.loads(line)
+                                    content = item.get("content", "")
+                                    if content and len(content) > 20:
+                                        texts.append(content)
+                                except json.JSONDecodeError:
+                                    continue
+                    except Exception:
+                        pass
+
+        # 3. 确保至少有基本数据
+        if not texts:
+            texts = ["态极正在通过递归蒸馏自我进化。"]
+
+        logger.info(f"  收集了 {len(texts)} 条训练文本用于蒸馏")
+        return texts
+
+    def _get_device(self) -> str:
+        """获取当前可用的训练设备。"""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return "cuda"
+        except ImportError:
+            pass
+        return "cpu"
+
+    def _get_model(self):
+        """获取当前模型实例。"""
+        if self._model_provider:
+            return self._model_provider()
+        try:
+            from taiji.core.app_state import app_state
+            return app_state.model
+        except ImportError:
+            return None
+
+    def _get_tokenizer(self):
+        """获取当前 tokenizer 实例。"""
+        if self._tokenizer_provider:
+            return self._tokenizer_provider()
+        try:
+            from taiji.core.app_state import app_state
+            return app_state.tokenizer
+        except ImportError:
+            return None
 
     # ─── 持久化 ─────────────────────────────────────
     

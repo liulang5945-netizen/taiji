@@ -16,6 +16,7 @@
 """
 import os
 import json
+import shutil
 import time
 import logging
 import threading
@@ -686,6 +687,232 @@ class EvolutionEngine:
         ]
         
         return "\n".join(lines)
+
+    # ── 代际迁移（第三层闭环的核心）─────────────────────
+
+    def execute_generation_transition(
+        self,
+        design: dict,
+        current_model,
+        current_tokenizer,
+        training_texts: list,
+        device: str = "cpu",
+        backup_dir: Optional[str] = None,
+    ) -> dict:
+        """执行代际迁移：用知识蒸馏将当前模型能力迁移到新一代模型。
+
+        这是递归进化闭环的关键一步——之前的 design_next_generation()
+        只产出设计方案（JSON），本方法把方案变成实际的新模型并替换。
+
+        Args:
+            design: design_next_generation() 返回的设计 dict
+            current_model: 当前运行的 ModelSelf 实例（教师）
+            current_tokenizer: 当前使用的 ModelSelfTokenizer
+            training_texts: 蒸馏用的训练文本列表
+            device: 训练设备
+            backup_dir: 旧模型备份目录（默认 {data_dir}/backups/）
+
+        Returns:
+            {
+                "success": bool,
+                "new_model_name": str,
+                "new_model_path": str,
+                "distillation_loss": float,
+                "validation_loss": float,
+                "error": str | None,
+            }
+        """
+        from taiji.config import ModelConfig
+        from taiji.architecture import ModelSelf
+        from taiji.loader import save_model
+        from taiji.core.app_state import app_state
+        from taiji.train.distiller import DistillationTrainer
+
+        arch = design.get("architecture", {})
+        next_gen_name = design.get("next_gen_name", "Taiji-NextGen")
+        direction = design.get("evolution_direction", "grow")
+
+        logger.info(
+            f"开始代际迁移: {design.get('current_gen', 'unknown')} → {next_gen_name} "
+            f"(方向: {direction})"
+        )
+
+        try:
+            # 1. 从设计方案构建 ModelConfig
+            config = _design_to_model_config(arch, current_model.config)
+
+            # 2. 创建学生模型（新一代）
+            student = ModelSelf(config)
+            logger.info(
+                f"学生模型已创建: hidden={config.hidden_size}, "
+                f"layers={config.num_hidden_layers}, heads={config.num_attention_heads}"
+            )
+
+            # 3. 知识蒸馏：教师 → 学生
+            if not training_texts:
+                training_texts = ["态极自进化系统"]
+
+            distiller = DistillationTrainer(
+                teacher_model=current_model,
+                student_model=student,
+                tokenizer=current_tokenizer,
+                alpha=0.7,
+                temperature=3.0,
+                lr=1e-4,
+            )
+
+            logger.info(f"开始蒸馏训练 ({len(training_texts)} 条文本, device={device})")
+            final_loss = 0.0
+            for epoch, step, loss, metrics in distiller.distill(
+                training_texts,
+                num_epochs=3,
+                batch_size=2,
+                device=device,
+            ):
+                final_loss = loss
+
+            logger.info(f"蒸馏完成, final_loss={final_loss:.4f}")
+
+            # 4. 验证学生模型
+            val_loss = _validate_student(student, current_tokenizer, training_texts[:5], device)
+            teacher_loss = _validate_student(current_model, current_tokenizer, training_texts[:5], device)
+            logger.info(f"验证: teacher_loss={teacher_loss:.4f}, student_loss={val_loss:.4f}")
+
+            # 5. 安全阀：学生 loss 远高于教师 → 蒸馏失败，不替换
+            if val_loss > teacher_loss * 3.0:
+                error_msg = (
+                    f"蒸馏验证失败: student_loss({val_loss:.4f}) >> "
+                    f"teacher_loss({teacher_loss:.4f})"
+                )
+                logger.warning(error_msg)
+                return {
+                    "success": False,
+                    "new_model_name": next_gen_name,
+                    "new_model_path": "",
+                    "distillation_loss": final_loss,
+                    "validation_loss": val_loss,
+                    "error": error_msg,
+                }
+
+            # 6. 保存新一代模型
+            data_dir = getattr(self, "data_dir", None)
+            if data_dir is None:
+                data_dir = "taiji_data/evolution_data"
+            gen_dir = os.path.join(data_dir, "generations", next_gen_name)
+            os.makedirs(gen_dir, exist_ok=True)
+            save_model(student, current_tokenizer, gen_dir)
+
+            # 7. 备份旧模型
+            if backup_dir is None:
+                backup_dir = os.path.join(data_dir, "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_path = os.path.join(
+                backup_dir,
+                f"backup_{design.get('current_gen', 'old')}_{int(time.time())}",
+            )
+            save_model(current_model, current_tokenizer, backup_path)
+            logger.info(f"旧模型已备份到: {backup_path}")
+
+            # 8. 运行时替换模型
+            app_state.update_model(student, current_tokenizer, None, next_gen_name)
+            logger.info(f"模型已替换为: {next_gen_name}")
+
+            # 9. 记录进化周期
+            self.metrics.evolution_cycles += 1
+            self._last_evolution_time = datetime.now()
+            self._tasks_since_evolution = 0
+            self._save_metrics()
+
+            return {
+                "success": True,
+                "new_model_name": next_gen_name,
+                "new_model_path": gen_dir,
+                "distillation_loss": final_loss,
+                "validation_loss": val_loss,
+                "error": None,
+            }
+
+        except Exception as exc:
+            logger.error(f"代际迁移失败: {exc}", exc_info=True)
+            return {
+                "success": False,
+                "new_model_name": next_gen_name,
+                "new_model_path": "",
+                "distillation_loss": 0.0,
+                "validation_loss": 0.0,
+                "error": str(exc),
+            }
+
+
+def _design_to_model_config(arch: dict, old_config=None) -> "ModelConfig":
+    """将 design_next_generation() 的架构描述转换为 ModelConfig。
+
+    处理字段名差异：design 用 num_layers，ModelConfig 用 num_hidden_layers。
+    """
+    from taiji.config import ModelConfig
+
+    # 默认值从旧配置继承（如果可用），否则用 125M 默认值
+    if old_config is not None:
+        cfg = ModelConfig(
+            hidden_size=old_config.hidden_size,
+            intermediate_size=old_config.intermediate_size,
+            num_hidden_layers=old_config.num_hidden_layers,
+            num_attention_heads=old_config.num_attention_heads,
+            num_key_value_heads=old_config.num_key_value_heads,
+            max_position_embeddings=old_config.max_position_embeddings,
+            active_heads=list(old_config.active_heads) if old_config.active_heads else None,
+        )
+    else:
+        cfg = ModelConfig()
+
+    # 用设计方案覆盖
+    if "hidden_size" in arch:
+        cfg.hidden_size = int(arch["hidden_size"])
+    if "num_layers" in arch:
+        cfg.num_hidden_layers = int(arch["num_layers"])
+    if "intermediate_size" in arch:
+        cfg.intermediate_size = int(arch["intermediate_size"])
+    if "num_attention_heads" in arch:
+        cfg.num_attention_heads = int(arch["num_attention_heads"])
+    if "num_key_value_heads" in arch:
+        cfg.num_key_value_heads = int(arch["num_key_value_heads"])
+
+    # 根据进化方向推导 active_heads
+    arch_type = arch.get("type", "expanded")
+    if arch_type == "multimodal":
+        cfg.active_heads = ["language", "tool", "perception", "memory", "plan"]
+    elif arch_type == "specialized":
+        special = arch.get("special_heads", ["language", "tool"])
+        cfg.active_heads = list(special)
+    else:
+        # grow/shrink/restructure/expanded: 保留 language + tool
+        cfg.active_heads = ["language", "tool"]
+
+    return cfg
+
+
+def _validate_student(model, tokenizer, texts: list, device: str = "cpu") -> float:
+    """用简单 forward pass 验证学生模型的 loss。"""
+    import torch
+
+    model.eval()
+    model.to(device)
+    total_loss = 0.0
+    count = 0
+
+    with torch.no_grad():
+        for text in texts:
+            if not text or not text.strip():
+                continue
+            encoded = tokenizer(text, return_tensors="pt", padding="max_length",
+                               truncation=True, max_length=256)
+            input_ids = encoded["input_ids"].to(device)
+            output = model(input_ids, targets=input_ids)
+            if output.loss is not None:
+                total_loss += output.loss.item()
+                count += 1
+
+    return total_loss / max(count, 1)
 
 
 # ─── 全局实例 ─────────────────────────────────────
