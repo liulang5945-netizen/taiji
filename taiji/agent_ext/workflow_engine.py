@@ -272,6 +272,14 @@ class WorkflowEngine:
             skill_id = config.get("skill_id", "")
             for key, value in context.items():
                 task = task.replace(f"{{{key}}}", str(value))
+            # B1-WF 修复：agent 节点通过 tool_registry 实际执行工具
+            try:
+                from taiji.agent_ext.tool_registry import registry
+                if registry.has(skill_id):
+                    result = registry.execute(skill_id, {"input": task})
+                    return {"task": task, "skill_id": skill_id, "result": result}
+            except Exception:
+                pass
             return {"task": task, "skill_id": skill_id, "note": "Agent execution deferred to runtime"}
 
         elif node_type == "tool":

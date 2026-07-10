@@ -382,7 +382,7 @@ class ReActEngine:
                 if content:
                     step.thought = content
 
-                if self._is_final_answer(content, tool_calls, step_num):
+                if self._is_final_answer(content, tool_calls, step_num, self.max_steps):
                     step.is_final = True
                     step.observation = content
                     result.steps.append(step)
@@ -493,7 +493,7 @@ class ReActEngine:
                 if content:
                     yield {"type": "thought", "data": {"step": step_num, "content": content}}
 
-                if self._is_final_answer(content, tool_calls, step_num):
+                if self._is_final_answer(content, tool_calls, step_num, self.max_steps):
                     yield {"type": "final", "data": {"answer": content, "step": step_num}}
                     break
 
@@ -680,11 +680,14 @@ class ReActEngine:
 - 只能使用上述列出的工具
 - 保持简洁、准确"""
 
-    def _is_final_answer(self, content, tool_calls, step_num):
+    def _is_final_answer(self, content, tool_calls, step_num, max_steps=15):
         """判断是否为最终答案（融合文本模式 + 行动模式）"""
         if tool_calls:
             return False
         if not content:
+            # B1-RE 修复：空 content + 无工具 → 若接近 max_steps 就终止，避免死循环
+            if step_num >= max_steps - 2:
+                return True
             return False
         # 显式最终答案标记
         final_markers = ['最终答案', 'Final Answer', 'final answer', 'DONE', '任务完成']
@@ -693,6 +696,9 @@ class ReActEngine:
                 return True
         # 第一步无工具调用 + 内容足够长 → 直接视为最终回答（文本模式）
         if not tool_calls and len(content) > 15:
+            return True
+        # B1-RE 修复：接近 max_steps 就终止
+        if step_num >= max_steps - 2:
             return True
         return False
 

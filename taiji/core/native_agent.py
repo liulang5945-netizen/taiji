@@ -86,8 +86,9 @@ class NativeAgentEngine:
 
         # 天生联网：自动搜索上下文注入
         self.web_context_provider = None  # func(task, step_num) -> Optional[str]
-        self._web_cache = {}  # 缓存搜索结果，避免重复搜索
+        self._web_cache = {}  # 缓存搜索结果（URL → (timestamp, result)）
         self._web_cache_ttl = 300  # 缓存有效期（秒）
+        self._web_cache_max = 200  # LRU 上限，超过则淘汰最旧的条目
         self._web_last_search_time = 0
 
         self.max_steps = max_steps
@@ -181,6 +182,21 @@ class NativeAgentEngine:
                     except Exception:
                         pass
 
+                # B1-RAG 修复：自动注入本地知识库检索结果
+                if step_num <= 2:  # 仅前两步注入，避免冗余
+                    try:
+                        from taiji.core.app_state import app_state
+                        if hasattr(app_state, 'rag_kb') and app_state.rag_kb is not None:
+                            rag_results = app_state.rag_kb.search(task, top_k=3)
+                            if rag_results:
+                                rag_lines = []
+                                for path, content, score in rag_results[:3]:
+                                    rag_lines.append(f"- [{path}] (relevance:{score:.2f}): {content[:300]}")
+                                rag_ctx = "\n".join(rag_lines)
+                                prompt_parts.append(f"<rag_knowledge>\n{rag_ctx}\n</rag_knowledge>")
+                    except Exception:
+                        pass
+
                 # 添加历史步骤
                 for prev_step in result.steps:
                     if prev_step.thought:
@@ -192,6 +208,10 @@ class NativeAgentEngine:
                         prompt_parts.append(f"<tool_result>{prev_step.observation[:300]}</tool_result>")
 
                 prompt_parts.append(f"[系统] 你是 Taiji AI 助手。可用工具:\n{tool_desc}")
+                # Deep Coupling: 注入生命状态
+                life_ctx = self._inject_life_context()
+                if life_ctx:
+                    prompt_parts.append(f"[状态] 当前自身状态:\n{life_ctx}")
                 prompt_parts.append(f"[用户] {task}")
                 prompt_parts.append("[助手] ")
                 full_prompt = "\n".join(prompt_parts)
@@ -211,6 +231,18 @@ class NativeAgentEngine:
                         )
 
                 step.thought = react_result.get("thought", "")
+
+                # ── 自修改引擎：每步评估回复质量（喂入评估数据） ──
+                if self._self_mod:
+                    try:
+                        response_text = (
+                            react_result.get("final_answer")
+                            or react_result.get("thought", "")
+                        )
+                        if response_text:
+                            self._self_mod.evaluate_response(response_text, task)
+                    except Exception:
+                        pass
 
                 # 如果连续 3 步都没有有效输出，强制结束
                 if step_num >= 3 and not react_result.get("action") and not react_result.get("final_answer"):
@@ -333,6 +365,18 @@ class NativeAgentEngine:
                     break
 
             step.duration_ms = (time.time() - step_start) * 1000
+            # ── 自修改引擎：定期检查回滚和批量化改进 ──
+            if self._self_mod:
+                try:
+                    # 每 3 步检查是否需要回滚效果不佳的改进
+                    if step_num % 3 == 0:
+                        self._self_mod.check_rollback()
+                    # 每 5 步尝试生成并应用新改进
+                    if step_num % 5 == 0:
+                        self._self_mod.batch_apply_improvements()
+                except Exception:
+                    pass
+
             result.steps.append(step)
             self._emit("step_end", {"step": step_num, "thought": step.thought[:200],
                                     "action": step.action, "duration_ms": step.duration_ms})
@@ -354,8 +398,45 @@ class NativeAgentEngine:
         self.inference.model.set_num_tools(len(self.inference.tokenizer._tool_name_to_id))
         # 连接知识学习器
         self._connect_knowledge_learner()
+        # 连接生命系统（Deep Coupling）
+        self._connect_life_system()
         # 连接天生联网
         self._connect_web_context()
+
+    def _connect_life_system(self):
+        """Deep Coupling: Agent 实时感知自身生命状态。
+
+        让 Agent 知道自己累了、饿了、好奇了，
+        在对话中自然地调整行为——比如累了就回答简短，好奇就多问。
+        """
+        try:
+            from taiji.life.life_scheduler import get_life_scheduler
+            scheduler = get_life_scheduler()
+            self._life_scheduler = scheduler
+            logger.info("态极已连接生命系统：Agent 能感知自身状态")
+        except Exception as e:
+            self._life_scheduler = None
+            logger.debug(f"生命系统连接失败: {e}")
+
+    def _inject_life_context(self) -> str:
+        """Deep Coupling: 生成当前生命状态摘要，注入 system prompt。"""
+        if not self._life_scheduler:
+            return ""
+        try:
+            needs = self._life_scheduler.needs
+            dominant = needs.dominant_need()
+            parts = []
+            if dominant == "hunger" and needs.hunger > 60:
+                parts.append("- 你感到饥饿，渴望获取新知识")
+            if dominant == "fatigue" and needs.fatigue > 70:
+                parts.append("- 你有些累了，回答可以简短一些")
+            if dominant == "curiosity" and needs.curiosity > 60:
+                parts.append("- 你对当前话题充满好奇，可以多追问几个问题")
+            if needs.stress > 70:
+                parts.append("- 你感到压力较大，需要谨慎行事")
+            return "\n".join(parts)
+        except Exception:
+            return ""
 
     def _connect_knowledge_learner(self):
         """连接知识学习器，注入搜索、LLM 和浏览器能力"""
@@ -422,15 +503,23 @@ class NativeAgentEngine:
                     return None
 
                 try:
-                    # 第一层：搜索引擎摘要
-                    result = registry.execute("search", {"input": query})
+                    # 优先使用 search_deep（搜索+抓取+摘要），回退到 search
+                    try:
+                        if registry.has("search_deep"):
+                            result = registry.execute("search_deep", {"input": query})
+                            logger.debug("Using search_deep for auto-context")
+                        else:
+                            result = registry.execute("search", {"input": query})
+                    except Exception:
+                        result = registry.execute("search", {"input": query})
+
                     if not result or len(str(result).strip()) < 20:
                         return None
 
-                    full_context = f"【搜索摘要】\n{str(result)[:500]}"
-                    collected_pages = []  # 收集到的网页内容（用于后台沉淀）
+                    full_context = str(result)[:2000]
+                    collected_pages = []
 
-                    # 第二层：深入读取前 2 个网页
+                    # 如果 search_deep 未生效，手动抓取前 2 个网页
                     urls = re.findall(r'https?://[^\s\)\"\']+', str(result))
                     urls = [u for u in urls if not any(x in u for x in
                             ['google.com/search', 'baidu.com/s', 'bing.com/search', 'duckduckgo.com'])]
@@ -447,7 +536,7 @@ class NativeAgentEngine:
                                 break
 
                             if page and len(str(page).strip()) > 100:
-                                full_context += f"\n\n【网页正文: {url[:60]}】\n{str(page)[:600]}"
+                                full_context += f"\n\n【网页正文: {url[:60]}】\n{str(page)[:1200]}"
                                 collected_pages.append({"url": url, "content": str(page)})
                         except Exception:
                             pass
@@ -460,7 +549,17 @@ class NativeAgentEngine:
                             self._background_learn(query, task, collected_pages)
 
                     # 控制长度：避免撑爆模型上下文窗口
-                    truncated = full_context[:600]
+                    truncated = full_context[:2000]
+                    # LRU 淘汰 + 惰性 TTL 清理：写入前回收过期和最旧条目
+                    if len(self._web_cache) >= self._web_cache_max:
+                        expired = [k for k, v in self._web_cache.items() if now - v[0] > self._web_cache_ttl]
+                        if expired:
+                            for k in expired:
+                                del self._web_cache[k]
+                        else:
+                            # 淘汰最旧的条目
+                            oldest = min(self._web_cache.items(), key=lambda kv: kv[1][0])
+                            del self._web_cache[oldest[0]]
                     self._web_cache[cache_key] = (now, truncated)
                     return truncated
 

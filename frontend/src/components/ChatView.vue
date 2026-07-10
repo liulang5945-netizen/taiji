@@ -13,6 +13,9 @@
           <span class="metric-chip">精力 {{ energyPercent }}%</span>
           <span class="metric-chip">饱腹 {{ satietyPercent }}%</span>
           <span class="metric-chip">好奇 {{ curiosityPercent }}%</span>
+          <span v-if="dominantNeedLabel" class="metric-chip dominant-need" title="最迫切需求">
+            {{ dominantNeedLabel }} {{ dominantNeedValue }}%
+          </span>
         </div>
       </div>
       <div class="topbar-actions">
@@ -162,6 +165,13 @@ const energyPercent = computed(() => Math.max(0, 100 - (runtimeStore.life.needs?
 const satietyPercent = computed(() => Math.max(0, 100 - (runtimeStore.life.needs?.hunger || 0)).toFixed(0))
 const curiosityPercent = computed(() => Math.max(0, runtimeStore.life.needs?.curiosity || 0).toFixed(0))
 const lifeStateText = computed(() => ({ idle: '清醒', sleeping: '睡眠', feeding: '吸收', playing: '探索', working: '执行' }[runtimeStore.life.life_state || 'idle'] || ''))
+const needIcons = { hunger: '饿', fatigue: '累', boredom: '闷', stress: '压', curiosity: '奇' }
+const dominantNeedKey = computed(() => runtimeStore.life.dominant_need || '')
+const dominantNeedLabel = computed(() => needIcons[dominantNeedKey.value] || '')
+const dominantNeedValue = computed(() => {
+  const needs = runtimeStore.life.needs || {}
+  return dominantNeedKey.value ? Math.round(needs[dominantNeedKey.value] || 0) : 0
+})
 const runtimeNotice = computed(() => runtimeStore.runtimeNotice)
 
 const quickHints = [
@@ -321,6 +331,8 @@ onMounted(scrollToBottom)
 .title-row svg { color: var(--primary-hover); }
 .title-row h1 {
   margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
   font-size: 16px;
   font-weight: 700;
   overflow: hidden;
@@ -344,6 +356,23 @@ onMounted(scrollToBottom)
 .life-chip.sleeping { color: var(--success); }
 .life-chip.feeding { color: var(--warning); }
 .life-chip.playing { color: var(--success); }
+
+.life-strip {
+  animation: taijiBreathe 8s ease-in-out infinite;
+}
+
+.metric-chip.dominant-need {
+  background: var(--danger-light);
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+  animation: critical-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .life-strip { animation: none; }
+  .metric-chip.dominant-need { animation: none; }
+}
 
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .engine-pill {

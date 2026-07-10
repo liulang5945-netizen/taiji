@@ -202,6 +202,13 @@ def _load_model_background():
         from taiji.tools.builtin_tools import register_all_tools
 
         register_all_tools()
+        # Deep Coupling: 注册引擎间事件订阅
+        try:
+            from taiji.infra.event_subscriptions import register_all_subscriptions
+            register_all_subscriptions()
+            logger.info("EventBus engine subscriptions registered")
+        except Exception as exc:
+            logger.warning(f"EventBus subscriptions failed: {exc}")
     except Exception as exc:
         logger.warning(f"Built-in tool registration failed: {exc}")
 

@@ -36,47 +36,10 @@
       <!-- 需求状态 -->
       <div class="needs-section" v-if="life.needs">
         <h3>内在需求</h3>
-        <div class="needs-grid">
-          <div class="need-item">
-            <span class="need-label"><Apple :size="14" /> 饥饿</span>
-            <div class="need-bar">
-              <div class="need-fill" :style="{ width: (life.needs.hunger || 0) + '%' }"
-                   :class="{ critical: (life.needs.hunger || 0) > 70 }"></div>
-            </div>
-            <span class="need-value">{{ Math.round(life.needs.hunger || 0) }}</span>
-          </div>
-          <div class="need-item">
-            <span class="need-label"><Moon :size="14" /> 疲劳</span>
-            <div class="need-bar">
-              <div class="need-fill" :style="{ width: (life.needs.fatigue || 0) + '%' }"
-                   :class="{ critical: (life.needs.fatigue || 0) > 80 }"></div>
-            </div>
-            <span class="need-value">{{ Math.round(life.needs.fatigue || 0) }}</span>
-          </div>
-          <div class="need-item">
-            <span class="need-label"><Radio :size="14" /> 无聊</span>
-            <div class="need-bar">
-              <div class="need-fill" :style="{ width: (life.needs.boredom || 0) + '%' }"
-                   :class="{ critical: (life.needs.boredom || 0) > 60 }"></div>
-            </div>
-            <span class="need-value">{{ Math.round(life.needs.boredom || 0) }}</span>
-          </div>
-          <div class="need-item">
-            <span class="need-label"><Activity :size="14" /> 压力</span>
-            <div class="need-bar">
-              <div class="need-fill" :style="{ width: (life.needs.stress || 0) + '%' }"
-                   :class="{ critical: (life.needs.stress || 0) > 70 }"></div>
-            </div>
-            <span class="need-value">{{ Math.round(life.needs.stress || 0) }}</span>
-          </div>
-          <div class="need-item">
-            <span class="need-label"><Eye :size="14" /> 好奇</span>
-            <div class="need-bar">
-              <div class="need-fill curiosity" :style="{ width: (life.needs.curiosity || 0) + '%' }"></div>
-            </div>
-            <span class="need-value">{{ Math.round(life.needs.curiosity || 0) }}</span>
-          </div>
-        </div>
+        <NeedsPentagram
+          :needs="life.needs"
+          :alive="life.is_running"
+        />
       </div>
 
       <!-- 生命状态卡片 -->
@@ -185,8 +148,9 @@ import { API_BASE, authFetch } from '@/composables/apiClient.js'
 import {
   Heart, Footprints, Zap, Eye,
   Apple, Moon, Gamepad2,
-  Activity, Radio
+  Activity
 } from 'lucide-vue-next'
+import NeedsPentagram from '@/components/NeedsPentagram.vue'
 
 const runtimeStore = useRuntimeStore()
 const toast = inject('toast', () => {})
@@ -349,6 +313,8 @@ onUnmounted(() => {
 
 .view-header h1 {
   color: var(--primary);
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
   font-size: 28px;
   font-weight: 600;
   margin: 0;
@@ -395,6 +361,7 @@ onUnmounted(() => {
 
 .taiji-avatar-section h2 {
   color: var(--text);
+  font-family: var(--font-display);
   font-size: 28px;
   margin-bottom: 8px;
 }
@@ -441,7 +408,7 @@ onUnmounted(() => {
 /* 需求状态 */
 .needs-section {
   margin-bottom: 32px;
-  padding: 20px;
+  padding: 24px 20px 28px;
   background: var(--bg-card);
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
@@ -450,60 +417,8 @@ onUnmounted(() => {
 .needs-section h3 {
   color: var(--text);
   font-size: 18px;
-  margin-bottom: 16px;
-}
-
-.needs-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.need-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.need-label {
-  color: var(--text-secondary);
-  font-size: 14px;
-  min-width: 70px;
-}
-
-.need-bar {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-muted);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.need-fill {
-  height: 100%;
-  background: var(--primary);
-  border-radius: 4px;
-  transition: width 0.5s ease;
-}
-
-.need-fill.critical {
-  background: var(--danger);
-}
-
-.need-fill.curiosity {
-  background: var(--success-light);
-}
-
-@keyframes bar-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.need-value {
-  color: var(--text-muted);
-  font-size: 12px;
-  min-width: 30px;
-  text-align: right;
+  margin-bottom: 12px;
+  text-align: center;
 }
 
 /* 状态网格 */

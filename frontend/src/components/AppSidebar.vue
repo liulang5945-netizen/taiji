@@ -31,7 +31,7 @@
     <div class="session-list" role="list" aria-label="会话列表">
       <div class="section-label">对话</div>
       <!-- 加载骨架 -->
-      <div v-if="!chatStore.sessionsLoaded" class="session-skeleton">
+      <div v-if="!chatStore.sessionsLoaded && !chatStore.sessions.length" class="session-skeleton">
         <div v-for="n in 3" :key="'skel-'+n" class="skeleton-item" aria-hidden="true">
           <span class="skeleton-bar" />
         </div>
@@ -65,6 +65,12 @@
         </RouterLink>
       </div>
     </div>
+
+    <div class="side-life-pulse" v-if="runtimeStore.life.is_running" @click="router.push('/life')" title="查看生命状态">
+      <span class="slp-dot" :class="dominantNeedClass"></span>
+      <span class="slp-label">{{ dominantNeedLabel }}</span>
+      <span class="slp-value">{{ dominantNeedValue }}%</span>
+    </div>
   </aside>
 </template>
 
@@ -96,15 +102,26 @@ function isActiveRoute(path) { return route.path === path }
 function handleNewChat() { chatStore.createNewSession(); router.push('/').catch(() => {}) }
 function openSession(id) { chatStore.switchSession(id); router.push('/').catch(() => {}) }
 
+const needIcons = { hunger: '饿', fatigue: '累', boredom: '闷', stress: '压', curiosity: '奇' }
+const dominantNeedKey = computed(() => runtimeStore.life.dominant_need || '')
+const dominantNeedLabel = computed(() => needIcons[dominantNeedKey.value] || '')
+const dominantNeedValue = computed(() => {
+  const needs = runtimeStore.life.needs || {}
+  return dominantNeedKey.value ? Math.round(needs[dominantNeedKey.value] || 0) : 0
+})
+const dominantNeedClass = computed(() => dominantNeedKey.value)
+
 const navGroups = computed(() => [
   { title: '工作台', items: [{ path: '/workspace', icon: Layout, label: 'IDE' }] },
   { title: '能力', items: [
     { path: '/agent', icon: Cpu, label: t('agent_config') },
     { path: '/kb', icon: BookOpen, label: t('kb_management') },
     { path: '/train', icon: Zap, label: t('fine_tuning') },
-    { path: '/life', icon: Heart, label: '生命状态' },
   ]},
-  { title: '系统', items: [{ path: '/settings', icon: Settings, label: t('sys_settings') }] },
+  { title: '系统', items: [
+    { path: '/life', icon: Heart, label: '生命状态' },
+    { path: '/settings', icon: Settings, label: t('sys_settings') },
+  ]},
 ])
 </script>
 
@@ -132,6 +149,7 @@ const navGroups = computed(() => [
 .runtime-state { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .runtime-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
 .runtime-card.connected .runtime-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-light); }
+.runtime-card.connected .runtime-dot { animation: taijiBreathe 4s ease-in-out infinite; }
 .runtime-card.loading .runtime-dot, .runtime-card.connecting .runtime-dot { background: var(--warning); animation: pulse 1.5s infinite; }
 .runtime-card.error .runtime-dot { background: var(--danger); }
 .runtime-label { color: var(--text-secondary); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -184,4 +202,24 @@ const navGroups = computed(() => [
   .sidebar-footer { padding: 8px 6px 10px !important; }
   .settings-btn { width: 36px; min-height: 32px; justify-content: center !important; padding: 0 !important; }
 }
+
+/* Sidebar mini life pulse */
+.side-life-pulse {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; margin: 0 6px 4px;
+  border-radius: var(--radius-md); cursor: pointer;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  transition: border-color 0.2s var(--ease);
+}
+.side-life-pulse:hover { border-color: var(--ink-muted); }
+.slp-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--ink-muted); }
+.slp-dot.hunger    { background: var(--danger); animation: slp-pulse 2s infinite; }
+.slp-dot.fatigue   { background: var(--ink-muted); }
+.slp-dot.boredom   { background: var(--text-muted); }
+.slp-dot.stress    { background: var(--danger); animation: slp-pulse 1.5s infinite; }
+.slp-dot.curiosity { background: var(--success); }
+@keyframes slp-pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+.slp-label { font-size: 11px; color: var(--text-muted); min-width: 14px; }
+.slp-value { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+@media (prefers-reduced-motion: reduce) { .slp-dot.hunger, .slp-dot.stress { animation: none; } }
 </style>

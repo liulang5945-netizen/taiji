@@ -676,6 +676,43 @@ class SelfModificationEngine:
 
         return applied
 
+    def evolve(self, task: str, tool_registry=None) -> Dict[str, Any]:
+        """
+        自主进化入口。Agent 在遇到困难时调用，尝试根据近期评估改进行为。
+
+        先尝试应用新的改进（batch_apply_improvements），
+        再检查是否有需要回滚的改进。
+        """
+        # 1. 尝试批量化改进
+        applied = self.batch_apply_improvements()
+        if applied:
+            improvement = applied[0]
+            return {
+                "evolved": True,
+                "action": improvement.proposal_type,
+                "tool_name": improvement.proposal_type,
+                "message": (
+                    f"已应用改进 [{improvement.proposal_type}]: "
+                    f"{improvement.description} (置信度: {improvement.confidence:.0%})"
+                ),
+            }
+
+        # 2. 检查是否有需要回滚的改进
+        before_count = len(self._active_improvements)
+        self.check_rollback()
+        after_count = len(self._active_improvements)
+
+        if after_count < before_count:
+            rolled_back = before_count - after_count
+            return {
+                "evolved": True,
+                "action": "rollback",
+                "tool_name": "rollback",
+                "message": f"回滚了 {rolled_back} 项效果不佳的改进",
+            }
+
+        return {"evolved": False, "message": "暂无可用改进或回滚"}
+
     def check_rollback(self):
         """检查是否需要回滚任何改进"""
         to_rollback = []
@@ -857,6 +894,37 @@ class SelfModificationEngine:
     def apply_modification(self, *args, **kwargs) -> dict:
         """兼容旧接口"""
         return {"success": True, "status": self.get_status()}
+
+    # ─── Deep Coupling 方法 ──────────────────────────
+
+    def clear_evaluations(self):
+        """深度耦合：模型更新后清零评估历史。
+
+        当 SleepEngine 训练完新模型后，旧的评估数据不再准确，
+        需要清零让新模型的评估从基线开始。
+        由 EventBus 的 sleep_complete 事件触发。
+        """
+        self._recent_evaluations = []
+        logger.info("SelfModification: evaluations cleared after model update")
+
+    def apply_suggestion(self, description: str, proposal_type: str, new_value: str = ""):
+        """深度耦合：接收外部改进建议（来自 RecursiveImprover/EventBus）。
+
+        让改进可以通过事件总线实时推送，而不是等到睡眠 Phase 5 才能反馈。
+        """
+        if proposal_type == "prompt" and new_value:
+            self._system_prompt_addendum = new_value
+            logger.info(f"SelfModification: applied prompt: {description[:60]}")
+        elif proposal_type == "reflection" and new_value:
+            self._reflection_overrides.append(new_value)
+            logger.info(f"SelfModification: applied reflection: {description[:60]}")
+        elif proposal_type == "temperature":
+            try:
+                temp = float(new_value)
+                self._temperature_overrides["default"] = max(0.1, min(2.0, temp))
+                logger.info(f"SelfModification: applied temperature: {temp}")
+            except ValueError:
+                pass
 
 
 # ─── 全局实例 ─────────────────────────────────────

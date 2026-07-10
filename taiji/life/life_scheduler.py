@@ -96,6 +96,7 @@ class LifeScheduler:
     FATIGUE_THRESHOLD = 80
     BOREDOM_THRESHOLD = 60
     CURIOSITY_THRESHOLD = 70
+    RESEARCH_THRESHOLD = 85  # B1 修复：curiosity 极高时触发科学研究
 
     # 需求自然增长速率（每分钟）
     HUNGER_GROWTH = 0.5       # 饥饿感缓慢上升
@@ -490,6 +491,9 @@ class LifeScheduler:
             return "explore"
         if self.needs.boredom >= self.BOREDOM_THRESHOLD:
             return "play"
+        # B1 修复：curiosity 极高时触发科学研究
+        if self.needs.curiosity >= self.RESEARCH_THRESHOLD:
+            return "research"
 
         return None
 
@@ -511,6 +515,9 @@ class LifeScheduler:
                 result = self._do_play()
             elif action == "explore":
                 result = self._do_explore()
+            # B1 修复：科学研究
+            elif action == "research":
+                result = self._do_research()
             else:
                 logger.warning(f"Unknown action: {action}")
         except Exception as e:
@@ -673,6 +680,46 @@ class LifeScheduler:
             logger.error(f"Explore failed: {e}")
             with self._lock:
                 self.needs.curiosity -= 10
+                self.needs.clamp_all()
+            return {"success": False, "error": str(e)}
+
+    # B1 修复：科学研究
+    def _do_research(self) -> dict:
+        """执行科学研究（好奇心极高时触发）"""
+        try:
+            from taiji.life.science_engine import get_science_engine
+            engine = get_science_engine()
+
+            # 选一个随机领域提出假设
+            domains = ["语言理解", "知识推理", "记忆机制", "学习效率", "工具使用"]
+            import random
+            domain = random.choice(domains)
+            question = f"如何提升态极在{domain}方面的能力？"
+
+            hypothesis = engine.propose_hypothesis(question, domain=domain)
+            if hypothesis:
+                experiment = engine.run_experiment(hypothesis.id)
+                if experiment and experiment.status == "completed":
+                    discovery = engine.draw_conclusion(hypothesis.id)
+                    logger.info(f"  科学发现: {discovery.title if discovery else '待验证'}")
+
+            # 研究后：好奇心大幅下降，疲劳上升
+            with self._lock:
+                self.needs.curiosity -= 50
+                self.needs.fatigue += 20
+                self.needs.boredom -= 15
+                self.needs.clamp_all()
+
+            self._publish_event("research_complete", {
+                "domain": domain,
+                "hypothesis": hypothesis.title if hypothesis else "",
+            })
+
+            return {"success": True, "domain": domain}
+        except Exception as e:
+            logger.error(f"Research failed: {e}")
+            with self._lock:
+                self.needs.curiosity -= 15
                 self.needs.clamp_all()
             return {"success": False, "error": str(e)}
 

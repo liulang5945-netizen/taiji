@@ -786,3 +786,14 @@ class RecursiveImprover:
                 for p in self._improvements[-5:]
             ],
         }
+
+
+# B4 修复：全局单例，避免每次新建实例丢失历史记录
+_recursive_improver: Optional[RecursiveImprover] = None
+
+
+def get_recursive_improver() -> RecursiveImprover:
+    global _recursive_improver
+    if _recursive_improver is None:
+        _recursive_improver = RecursiveImprover()
+    return _recursive_improver

@@ -18,10 +18,12 @@
 """
 import os
 import re
+import concurrent.futures
 import json
 import time
 import hashlib
 import logging
+import random
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -117,6 +119,40 @@ class WebCache:
 
 # 全局缓存
 _cache = WebCache()
+
+
+# ═══════════════════════════════════════════════
+# 重试包装器
+# ═══════════════════════════════════════════════
+
+def _with_retry(func, max_retries: int = 2, base_delay: float = 1.0):
+    """
+    指数退避重试：1s → 2s → 4s，最多 2 次重试（共 3 次尝试）。
+    加入 ±25% 随机抖动避免惊群。
+    """
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            delay = base_delay * (2 ** (attempt - 1))
+            jitter = delay * 0.25 * (random.random() * 2 - 1)
+            time.sleep(delay + jitter)
+        try:
+            return func()
+        except Exception as e:
+            last_exc = e
+            logger.debug(f"  Retry {attempt + 1}/{max_retries + 1} for {func.__name__}: {e}")
+    raise last_exc
+
+
+def _search_single_engine(engine_func, query: str, max_results: int, timeout: float = 3.0):
+    """
+    单引擎搜索，带超时。
+    engine_func(query, max_results) -> List[SearchResult]
+    """
+    try:
+        return engine_func(query, max_results)
+    except Exception:
+        return []
 
 
 # ═══════════════════════════════════════════════
@@ -250,22 +286,37 @@ def search(query: str, max_results: int = 5, engine: str = "auto") -> List[Searc
 
     # 自动模式：依次尝试
     if engine == "auto":
-        engines = [
-            ("DuckDuckGo", _search_duckduckgo),
-            ("Bing", _search_bing),
-            ("Baidu", _search_baidu),
-        ]
-        for name, func in engines:
-            results = func(query, max_results)
-            if results:
-                logger.info(f"搜索引擎 {name} 返回 {len(results)} 条结果")
-                break
+        # 并行竞速：三个引擎同时发，1.5s 后取最早返回的非空结果
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {
+                pool.submit(
+                    _with_retry, lambda f=func: f(query, max_results), max_retries=1, base_delay=0.5
+                ): name
+                for name, func in [
+                    ("DuckDuckGo", _search_duckduckgo),
+                    ("Bing", _search_bing),
+                    ("Baidu", _search_baidu),
+                ]
+            }
+            for future in concurrent.futures.as_completed(futures, timeout=4.0):
+                name = futures[future]
+                try:
+                    r = future.result(timeout=0.5)
+                    if r:
+                        results = r
+                        logger.info(f"搜索引擎 {name} 返回 {len(results)} 条结果")
+                        break
+                except Exception:
+                    continue
+            # 取消未完成的任务
+            for f in futures:
+                f.cancel()
     elif engine == "duckduckgo":
-        results = _search_duckduckgo(query, max_results)
+        results = _with_retry(lambda: _search_duckduckgo(query, max_results), max_retries=2, base_delay=1.0)
     elif engine == "bing":
-        results = _search_bing(query, max_results)
+        results = _with_retry(lambda: _search_bing(query, max_results), max_retries=2, base_delay=1.0)
     elif engine == "baidu":
-        results = _search_baidu(query, max_results)
+        results = _with_retry(lambda: _search_baidu(query, max_results), max_retries=2, base_delay=1.0)
 
     # 缓存结果
     if results:
@@ -445,3 +496,61 @@ def web_browse(url: str) -> str:
 
     # 回退到普通抓取
     return fetch_to_markdown(url)
+
+
+# ═══════════════════════════════════════════════
+# 深度搜索：搜索 → 批量抓取 → 结构化摘要
+# ═══════════════════════════════════════════════
+
+def search_deep(query: str, max_fetch: int = 3) -> str:
+    """
+    深度搜索：搜索 + 并行抓取顶部结果 → 结构化 Markdown 摘要。
+    模拟 Perplexity/Claude 的 search → fetch → summarize 管道。
+
+    Args:
+        query: 搜索关键词
+        max_fetch: 最多抓取的网页数
+
+    Returns:
+        格式化的 Markdown 搜索结果 + 抓取摘要
+    """
+    results = search(query, max_results=max(5, max_fetch))
+    if not results:
+        return f"搜索 '{query}' 未找到结果。"
+
+    lines = [f"## 搜索: {query}\n", f"找到 {len(results)} 条结果:\n"]
+
+    # 并行抓取顶部页面
+    fetched = {}
+    if max_fetch > 0:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_fetch, 3)) as pool:
+            future_map = {
+                pool.submit(_with_retry, lambda u=r.url: fetch(u, as_markdown=True, max_length=3000),
+                           max_retries=1, base_delay=0.5): i
+                for i, r in enumerate(results[:max_fetch])
+            }
+            for future in concurrent.futures.as_completed(future_map, timeout=12.0):
+                idx = future_map[future]
+                try:
+                    content = future.result(timeout=1.0)
+                    if content and not content.startswith(("抓取失败", "HTTP 错误")):
+                        fetched[idx] = content[:2000]
+                except Exception:
+                    pass
+            for f in future_map:
+                f.cancel()
+
+    for i, r in enumerate(results):
+        lines.append(f"### {i+1}. {r.title}")
+        lines.append(f"**来源**: {r.url}  ({r.source})")
+        lines.append(f"> {r.snippet[:300]}")
+        if i in fetched:
+            lines.append(f"\n**页面摘要**:\n{fetched[i]}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def web_search_deep(query: str) -> str:
+    """search_deep 的工具统一接口"""
+    return search_deep(query, max_fetch=3)

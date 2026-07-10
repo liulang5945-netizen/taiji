@@ -337,6 +337,36 @@ class KnowledgeLearner:
         """设置智能抓取函数（优先级高于 _read_web）"""
         self._fetch_fn = fetch_func
 
+    def maybe_distill_to_training_data(self, model=None, tokenizer=None) -> dict:
+        """
+        如果累积了足够多的新知识，蒸馏为训练数据。
+        由 SleepEngine 在睡眠阶段调用。
+        """
+        count = sum(1 for e in self.store._entries if not getattr(e, 'distilled', False))
+        if count < 10:
+            return {"distilled": False, "reason": f"新知识条目不足 ({count} < 10)"}
+
+        try:
+            from taiji.data.knowledge_to_intelligence import KnowledgeToIntelligence
+            engine = KnowledgeToIntelligence(
+                knowledge_learner=self,
+                model=model,
+                tokenizer=tokenizer,
+            )
+            result = engine.start_intelligence_boost()
+            # Mark entries as distilled
+            if result.get("samples_generated", 0) > 0:
+                for e in self.store._entries:
+                    if not getattr(e, 'distilled', False):
+                        e.distilled = True
+                self.store.save()
+            return {"distilled": True, "samples": result.get("samples_generated", 0)}
+        except ImportError:
+            return {"distilled": False, "reason": "KnowledgeToIntelligence 不可用"}
+        except Exception as exc:
+            logger.warning(f"知识蒸馏失败: {exc}")
+            return {"distilled": False, "reason": str(exc)}
+
     # ======================== 主入口 ========================
 
     def start_learning(self, domain: str, sources: List[str] = None,
@@ -841,3 +871,25 @@ def get_knowledge_learner() -> KnowledgeLearner:
     if _knowledge_learner is None:
         _knowledge_learner = KnowledgeLearner()
     return _knowledge_learner
+
+
+def record_research_finding(domain: str, hypothesis: str):
+    """Deep Coupling: 记录科学研究发现到知识库。
+
+    由 event_subscriptions 中 research_complete 事件触发。
+    """
+    try:
+        learner = get_knowledge_learner()
+        # 创建知识条目记录发现
+        entry_id = f"research_{int(time.time())}"
+        entry = {
+            "id": entry_id,
+            "domain": domain,
+            "hypothesis": hypothesis,
+            "source": "science_engine",
+            "timestamp": time.time(),
+        }
+        learner.store._save_entry(entry)
+        logger.info(f"KnowledgeLearner: recorded research finding [{domain}]: {hypothesis[:60]}")
+    except Exception as e:
+        logger.debug(f"KnowledgeLearner: research record failed: {e}")

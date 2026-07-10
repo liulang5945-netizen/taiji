@@ -493,40 +493,111 @@ def register_local_tools():
     except ImportError:
         pass
 
-    # 搜索引擎
+    # 搜索引擎（自建，零外部 API 依赖）
     try:
-        from taiji.agent_ext.agent import _create_robust_search
-        import json as _json
-        # 读取用户搜索配置
-        _search_engine = "智能多核"
-        _search_key = ""
-        _ui_settings = {}
-        try:
-            from taiji.services.settings_service import load_settings
-
-            _ui_settings = load_settings()
-            _search_engine = _ui_settings.get("search_engine", "\u667a\u80fd\u591a\u6838")
-            _search_key = _ui_settings.get("search_key", "")
-        except Exception:
-            pass
-        # 优先使用统一 web 模块，回退到旧版搜索
-        try:
-            from taiji.tools.web import web_search
-            search_func = web_search
-        except Exception:
-            search_func = _create_robust_search(_search_engine, _ui_settings, _search_key, "")
+        from taiji.tools.search import (
+            tool_search, tool_search_deep, tool_search_local,
+            tool_crawl_site, tool_browse_web, tool_smart_crawl,
+        )
 
         local_tools.append(ToolDef(
             name="search",
-            description="在互联网上搜索最新信息。输入简短的搜索关键词。支持 DuckDuckGo、Bing、百度多引擎。",
+            description="在互联网上搜索最新信息。输入简短的搜索关键词。自建搜索引擎，并行爬取 DuckDuckGo/Bing/Baidu/Wikipedia，零外部 API 依赖。",
             parameters={"type": "object", "properties": {
                 "input": {"type": "string", "description": "搜索关键词"}
             }, "required": ["input"]},
-            func=search_func,
+            func=tool_search,
             source="local", category="网络",
         ))
+
+        local_tools.append(ToolDef(
+            name="search_deep",
+            description="深度搜索：先查本地索引，未命中则联网搜索并自动抓取顶部页面内容，将结果沉淀到本地索引。越用越快，越用越聪明。适合需要详细了解某个主题时使用。",
+            parameters={"type": "object", "properties": {
+                "input": {"type": "string", "description": "搜索关键词"}
+            }, "required": ["input"]},
+            func=tool_search_deep,
+            source="local", category="网络",
+        ))
+
+        local_tools.append(ToolDef(
+            name="search_local",
+            description="搜索本地已爬取的网页索引。需要先通过 crawl_site 或 browse_web 建立索引。搜索速度极快，无网络请求，零外部依赖。",
+            parameters={"type": "object", "properties": {
+                "input": {"type": "string", "description": "搜索关键词"}
+            }, "required": ["input"]},
+            func=tool_search_local,
+            source="local", category="网络",
+        ))
+
+        local_tools.append(ToolDef(
+            name="crawl_site",
+            description="批量爬取一个网站并建立本地搜索索引。通过 sitemap.xml 发现页面，并行抓取，自动提取正文，建立 BM25 倒排索引。输入网站根 URL。",
+            parameters={"type": "object", "properties": {
+                "input": {"type": "string", "description": "网站根 URL"}
+            }, "required": ["input"]},
+            func=tool_crawl_site,
+            source="local", category="网络",
+        ))
+
+        local_tools.append(ToolDef(
+            name="browse_web",
+            description="用浏览器打开指定网页，支持 JS 渲染，自动提取正文并加入本地索引。会跟随页面内的 2 个链接继续抓取。适合浏览单页或 JS 渲染的网站。",
+            parameters={"type": "object", "properties": {
+                "input": {"type": "string", "description": "网页 URL"}
+            }, "required": ["input"]},
+            func=tool_browse_web,
+            source="local", category="网络",
+        ))
+
+        local_tools.append(ToolDef(
+            name="smart_crawl",
+            description="智能爬取：先搜索关键词，再对搜索结果做主题聚焦爬取。自动评分链接、评估内容质量、自适应深度，只爬有价值的页面。适合深入研究某个主题。",
+            parameters={"type": "object", "properties": {
+                "input": {"type": "string", "description": "主题关键词或搜索查询"}
+            }, "required": ["input"]},
+            func=tool_smart_crawl,
+            source="local", category="网络",
+        ))
+
+        # 多模态输出工具
+        try:
+            from taiji.multimodal.output_engine import MultimodalOutputEngine
+            _moe = MultimodalOutputEngine()
+
+            def _tool_generate_image(prompt: str) -> str:
+                path = _moe.generate_image(prompt)
+                return f"Image generated: {path}" if path else "Image generation failed"
+
+            def _tool_text_to_speech(text: str) -> str:
+                path = _moe.text_to_speech(text)
+                return f"Speech generated: {path}" if path else "Speech generation failed"
+
+            local_tools.append(ToolDef(
+                name="generate_image",
+                description="AI 文生图。输入图片描述，生成一张图片。适用于：用户要求画图、生成插图、可视化概念等场景。",
+                parameters={"type": "object", "properties": {
+                    "input": {"type": "string", "description": "图片描述（中文或英文）"}
+                }, "required": ["input"]},
+                func=_tool_generate_image,
+                source="local", category="多模态",
+            ))
+
+            local_tools.append(ToolDef(
+                name="text_to_speech",
+                description="文字转语音。将文本合成为语音文件并返回路径。用于朗读文本、生成语音输出。",
+                parameters={"type": "object", "properties": {
+                    "input": {"type": "string", "description": "要朗读的文本"}
+                }, "required": ["input"]},
+                func=_tool_text_to_speech,
+                source="local", category="多模态",
+            ))
+        except Exception:
+            pass
+
     except Exception:
         pass
+
 
     # 网页阅读（使用统一 web 模块）
     try:
@@ -585,13 +656,18 @@ def register_local_tools():
 
     # 智能网页抓取（优先 MCP fetch，降级到 requests）
     try:
+        _cached_fetch_tool_name = None  # 缓存 smart_fetch 中的 MCP fetch 工具名
         def _smart_fetch(url: str) -> str:
             """智能抓取网页，返回 Markdown 格式正文。优先用 MCP fetch，降级到 requests。"""
+            nonlocal _cached_fetch_tool_name
             # 优先尝试 MCP fetch
-            fetch_tools = [n for n in registry.list_names() if "fetch" in n and "markdown" in n]
-            if fetch_tools:
+            if _cached_fetch_tool_name is None:
+                fetch_tools = [n for n in registry.list_names() if "fetch" in n and "markdown" in n]
+                if fetch_tools:
+                    _cached_fetch_tool_name = fetch_tools[0]
+            if _cached_fetch_tool_name:
                 try:
-                    result = registry.execute(fetch_tools[0], {"url": url})
+                    result = registry.execute(_cached_fetch_tool_name, {"url": url})
                     if result and len(str(result).strip()) > 50:
                         return str(result)[:10000]
                 except Exception as e:
