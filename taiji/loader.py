@@ -70,7 +70,7 @@ def load_model(
     weights_path = os.path.join(model_path, "model.pt")
     if os.path.exists(weights_path):
         state_dict = torch.load(weights_path, map_location=device, weights_only=True)
-        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        missing, unexpected = model.load_state_dict(_remap_legacy_keys(state_dict), strict=False)
         if missing:
             logger.warning("Missing keys in checkpoint (will use random init): %s", missing)
         if unexpected:
@@ -142,3 +142,41 @@ def _config_to_dict(config: ModelConfig) -> dict:
 def _dict_to_config(data: dict) -> ModelConfig:
     """Deserialise ModelConfig from dict."""
     return ModelConfig.from_dict(data)
+
+def _remap_legacy_keys(state_dict: dict) -> dict:
+    """Remap old-format checkpoint keys to the current architecture naming.
+
+    Old format (flat):   embed.weight, layers.N.attn.wq.weight, layers.N.wg.weight, norm.weight
+    New format (nested): backbone.embedding.weight, backbone.layers.N.attention.wq.weight,
+                         backbone.layers.N.feed_forward.w_gate.weight, backbone.norm.weight
+    """
+    if any(k.startswith("backbone.") for k in state_dict):
+        return state_dict  # Already new format
+    if "embed.weight" not in state_dict and not any("layers." in k for k in state_dict):
+        return state_dict  # Unknown format, pass through
+
+    remapped = {}
+    for key, val in state_dict.items():
+        if key == "embed.weight":
+            remapped["backbone.embedding.weight"] = val
+        elif key == "norm.weight":
+            remapped["backbone.norm.weight"] = val
+        elif key.startswith("layers."):
+            parts = key.split(".", 2)
+            layer_idx, rest = parts[1], parts[2]
+            prefix = f"backbone.layers.{layer_idx}"
+            if rest.startswith("attn_norm."):
+                remapped[f"{prefix}.attention_norm.{rest[10:]}"] = val
+            elif rest.startswith("ffn_norm."):
+                remapped[f"{prefix}.ffn_norm.{rest[9:]}"] = val
+            elif rest.startswith("attn."):
+                remapped[f"{prefix}.attention.{rest[5:]}"] = val
+            elif rest.startswith("wg."):
+                remapped[f"{prefix}.feed_forward.w_gate.{rest[3:]}"] = val
+            elif rest.startswith("w1."):
+                remapped[f"{prefix}.feed_forward.w1.{rest[3:]}"] = val
+            elif rest.startswith("w2."):
+                remapped[f"{prefix}.feed_forward.w2.{rest[3:]}"] = val
+        else:
+            remapped[key] = val  # lm_head.weight etc.
+    return remapped

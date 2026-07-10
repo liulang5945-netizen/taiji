@@ -276,46 +276,155 @@ def _categorize_path(path: str) -> str:
 class StreamingNativeDataset(IterableDataset):
     """Streaming dataset with optional category-weighted sampling."""
     def __init__(self, data_dir: str, sp, contract: dict, max_length: int,
-                 buffer_size: int = 10000, category_weights: dict | None = None):
+                 buffer_size: int = 10000, category_weights: dict | None = None,
+                 replay_data_dir: str | None = None, replay_ratio: float = 0.0,
+                 warn_oversample: int = 10):
         self.data_dir = data_dir
+        self.replay_data_dir = replay_data_dir
+        self.replay_ratio = replay_ratio
         self.sp = sp
         self.text_offset = int(contract["text_offset"])
         self.pad_id = int(contract["special_tokens"]["<pad>"])
         self.max_length = max_length
         self.buffer_size = buffer_size
         self.category_weights = category_weights
+        self.warn_oversample = warn_oversample
+        # Track file usage for oversampling detection
+        self._file_lines: dict[str, int] = {}
+        self._file_sampled: dict[str, int] = {}
+        self._oversample_warned: set[str] = set()
 
-    def _get_shard_files(self):
-        """Get all JSONL files grouped by category if weights provided."""
-        if not self.category_weights:
-            files = []
-            for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
-                for path in glob.glob(os.path.join(self.data_dir, pattern), recursive=True):
-                    if not _should_skip_data_path(path):
-                        files.append(path)
-            random.shuffle(files)
-            return files
-        # Weighted: group by category
-        categorized = {cat: [] for cat in self.category_weights}
+    def _count_lines(self, filepath: str) -> int:
+        """Count lines in a file (cached)."""
+        if filepath in self._file_lines:
+            return self._file_lines[filepath]
+        try:
+            count = 0
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for _ in f:
+                    count += 1
+            self._file_lines[filepath] = count
+            return count
+        except OSError:
+            self._file_lines[filepath] = 0
+            return 0
+
+    def _scan_dir(self, data_dir: str) -> tuple[dict[str, list[str]], list[str]]:
+        """Scan a directory and return (categorized_files, uncategorized_files)."""
+        categorized: dict[str, list[str]] = {cat: [] for cat in (self.category_weights or {})}
         uncategorized = []
         for pattern in ("**/*.jsonl", "**/*.json", "**/*.txt"):
-            for path in glob.glob(os.path.join(self.data_dir, pattern), recursive=True):
-                if not _should_skip_data_path(path):
+            for path in glob.glob(os.path.join(data_dir, pattern), recursive=True):
+                if _should_skip_data_path(path):
+                    continue
+                # Also skip parquet files
+                if path.endswith(".parquet"):
+                    continue
+                if self.category_weights:
                     cat = _categorize_path(path)
                     if cat in categorized:
                         categorized[cat].append(path)
                     else:
                         uncategorized.append(path)
-        # Flatten weighted by category, shuffle within each group
+                else:
+                    uncategorized.append(path)
+        return categorized, uncategorized
+
+    def _check_oversample(self, filepath: str):
+        """Warn if a file is being oversampled relative to its line count."""
+        if self.warn_oversample <= 0:
+            return
+        if filepath in self._oversample_warned:
+            return
+        sampled = self._file_sampled.get(filepath, 0)
+        total_lines = self._count_lines(filepath)
+        if total_lines > 0 and sampled > total_lines * self.warn_oversample:
+            category = _categorize_path(filepath) if self.category_weights else "general"
+            fname = os.path.basename(filepath)
+            print(f"WARNING: File oversampled! {fname} ({category}, {total_lines:,} lines) "
+                  f"sampled {sampled:,} times ({sampled//max(total_lines,1)}x per line). "
+                  f"Consider adding more {category} data or reducing its weight.")
+            self._oversample_warned.add(filepath)
+
+    def _get_shard_files(self):
+        """Get all JSONL files grouped by category with optional replay mixing."""
+        # Build file lists from main data dir and replay dir
+        main_cat, main_uncat = self._scan_dir(self.data_dir)
+
+        replay_files = []
+        if self.replay_data_dir and self.replay_ratio > 0:
+            _, replay_uncat = self._scan_dir(self.replay_data_dir)
+            replay_files = replay_uncat
+            if replay_files:
+                random.shuffle(replay_files)
+                print(f"Data replay enabled: ratio={self.replay_ratio:.0%} "
+                      f"replay_files={len(replay_files)}")
+
+        # If no category weights, simple shuffle with replay
+        if not self.category_weights:
+            files = list(main_uncat)
+            random.shuffle(files)
+            if replay_files and self.replay_ratio > 0:
+                # Interleave replay files based on ratio
+                result = []
+                replay_idx = 0
+                for f in files:
+                    if replay_idx < len(replay_files) and random.random() < self.replay_ratio:
+                        result.append(replay_files[replay_idx % len(replay_files)])
+                        replay_idx += 1
+                    result.append(f)
+                return result
+            return files
+
+        # Weighted: group by category
+        categorized = main_cat
+        uncategorized = main_uncat
+
+        # Count total available files for weighting
+        total_cat_files = sum(len(v) for v in categorized.values())
+        total_uncat_files = len(uncategorized)
+        total_files = total_cat_files + total_uncat_files
+
+        # Warn about empty categories
+        for cat, weight in self.category_weights.items():
+            if not categorized.get(cat) and weight > 0 and cat not in ("wikipedia", "replay"):
+                print(f"WARNING: Category '{cat}' has weight={weight} but no files found. "
+                      f"Will be skipped during sampling.")
+
+        if total_files == 0:
+            print("ERROR: No training files found in data_dir!")
+            return []
+
+        # Build weighted file list
         result = []
         cats = list(self.category_weights.keys())
         weights = list(self.category_weights.values())
-        for _ in range(sum(len(v) for v in categorized.values()) + len(uncategorized)):
-            cat = random.choices(cats, weights=weights, k=1)[0]
-            if categorized[cat]:
+
+        # Adjust weights: skip categories with no files
+        active_cats = []
+        active_weights = []
+        for cat, w in zip(cats, weights):
+            if categorized.get(cat) or uncategorized:
+                active_cats.append(cat)
+                active_weights.append(w)
+        if not active_cats:
+            active_cats = cats
+            active_weights = weights
+
+        # Generate file list ? allow replay files to be interspersed
+        replay_idx = 0
+        has_replay = bool(replay_files and self.replay_ratio > 0)
+
+        for _ in range(total_files * 2):  # Double to account for replay interleaving
+            if has_replay and random.random() < self.replay_ratio:
+                result.append(replay_files[replay_idx % len(replay_files)])
+                replay_idx += 1
+            cat = random.choices(active_cats, weights=active_weights, k=1)[0]
+            if categorized.get(cat):
                 result.append(random.choice(categorized[cat]))
             elif uncategorized:
                 result.append(random.choice(uncategorized))
+
         return result
 
     def _extract(self, line: str) -> str:
@@ -337,8 +446,12 @@ class StreamingNativeDataset(IterableDataset):
         """Iterate over data with shuffle buffer."""
         buffer = []
         for shard_file in self._get_shard_files():
+            # Track file usage for oversampling detection
+            self._file_sampled[shard_file] = self._file_sampled.get(shard_file, 0) + 1
+            self._check_oversample(shard_file)
             try:
                 with open(shard_file, "r", encoding="utf-8", errors="ignore") as f:
+                    lines_read = 0
                     for line in f:
                         line = line.strip()
                         if len(line) <= 40:
@@ -394,23 +507,41 @@ def save_checkpoint(model, cfg, contract, tokenizer_path, path, step, loss, toke
 
 
 def load_checkpoint(checkpoint_dir: str, model, optimizer=None, scaler=None):
-    """Load checkpoint and resume training state."""
+    """Load checkpoint and resume training state.
+
+    Returns (state_dict, warnings_list).
+    state_dict contains step, loss, tokens_seen.
+    warnings_list is a list of human-readable warning strings.
+    """
     checkpoint_dir = Path(checkpoint_dir)
     if not checkpoint_dir.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_dir}")
+
+    warnings = []
 
     # Load model
     model_path = checkpoint_dir / "model.pt"
     if model_path.exists():
         model.load_state_dict(torch.load(model_path, weights_only=True))
         print(f"Loaded model from {model_path}")
+    else:
+        raise FileNotFoundError(f"Model weights not found: {model_path}")
 
-    # Load optimizer
+    # Load optimizer ? warn if missing (common cause of resumed training degradation)
     if optimizer is not None:
         opt_path = checkpoint_dir / "optimizer.pt"
         if opt_path.exists():
             optimizer.load_state_dict(torch.load(opt_path, weights_only=True))
             print(f"Loaded optimizer from {opt_path}")
+        else:
+            msg = (
+                f"WARNING: optimizer.pt not found in {checkpoint_dir}. "
+                f"Adam momentum/velocity will be reset to zero. "
+                f"This can cause a temporary loss spike as the optimizer re-adapts. "
+                f"To avoid this in future, save optimizer state alongside model weights."
+            )
+            warnings.append(msg)
+            print(msg)
 
     # Load scaler
     if scaler is not None:
@@ -418,15 +549,20 @@ def load_checkpoint(checkpoint_dir: str, model, optimizer=None, scaler=None):
         if scaler_path.exists():
             scaler.load_state_dict(torch.load(scaler_path, weights_only=True))
             print(f"Loaded scaler from {scaler_path}")
+        else:
+            msg = f"WARNING: scaler.pt not found in {checkpoint_dir}. AMP scaler will be re-initialized."
+            warnings.append(msg)
+            print(msg)
 
     # Load training state
     state_path = checkpoint_dir / "training_state.json"
     if state_path.exists():
         state = json.loads(state_path.read_text(encoding="utf-8"))
-        print(f"Resumed from step={state['step']} tokens_seen={state['tokens_seen']:,}")
-        return state
+        print(f"Resumed from step={state['step']:,} tokens_seen={state['tokens_seen']:,} "
+              f"loss={state.get('loss', 'N/A')}")
+        return state, warnings
 
-    return {"step": 0, "loss": 0.0, "tokens_seen": 0}
+    return {"step": 0, "loss": 0.0, "tokens_seen": 0}, warnings
 
 
 def cleanup_checkpoints(output_dir: str, keep_last: int = 3):
@@ -564,6 +700,9 @@ def train_config(cfg_all: dict[str, Any]) -> None:
             train_cfg["data_dir"], sp, contract, train_cfg["max_length"],
             buffer_size=train_cfg.get("streaming_buffer", 10000),
             category_weights=cat_weights,
+            replay_data_dir=train_cfg.get("replay_data_dir"),
+            replay_ratio=train_cfg.get("replay_ratio", 0.0),
+            warn_oversample=train_cfg.get("warn_oversample", 10),
         )
         print(f"Using streaming dataset with category weights: {cat_weights}")
     else:
@@ -595,10 +734,15 @@ def train_config(cfg_all: dict[str, Any]) -> None:
     tokens_seen = 0
     last_loss = 0.0
     if resume_from:
-        state = load_checkpoint(resume_from, model, opt, scaler)
+        state, warnings = load_checkpoint(resume_from, model, opt, scaler)
         step = state.get("step", 0)
         tokens_seen = state.get("tokens_seen", 0)
         last_loss = state.get("loss", 0.0)
+        # If optimizer state was missing, skip warmup since momentum is reset
+        if warnings and any("optimizer.pt not found" in w for w in warnings):
+            print("Note: optimizer state missing ? warmup_steps will be skipped "
+                  "(no momentum to warm up)")
+            train_cfg["warmup_steps"] = 0
 
     # Load holdout eval data
     holdout_dir = train_cfg.get("holdout_dir")
@@ -740,6 +884,13 @@ def build_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         train_cfg["gradient_checkpointing"] = True
     if args.keep_last_checkpoints:
         train_cfg["keep_last_checkpoints"] = args.keep_last_checkpoints
+    # Data replay and oversampling control
+    if args.replay_data_dir:
+        train_cfg["replay_data_dir"] = args.replay_data_dir
+    if args.replay_ratio is not None:
+        train_cfg["replay_ratio"] = args.replay_ratio
+    if args.warn_oversample is not None:
+        train_cfg["warn_oversample"] = args.warn_oversample
 
     return {"model": model_cfg, "training": train_cfg}
 
@@ -769,6 +920,9 @@ if __name__ == "__main__":
     parser.add_argument("--holdout_dir", default=None, help="Directory containing holdout eval JSONL files")
     parser.add_argument("--gradient_checkpointing", action="store_true", help="Enable gradient checkpointing (save activation memory, ~20% slower)")
     parser.add_argument("--keep_last_checkpoints", type=int, default=3, help="Number of recent checkpoints to keep")
+    parser.add_argument("--replay_data_dir", default=None, help="Directory with old training data to mix in (prevents catastrophic forgetting)")
+    parser.add_argument("--replay_ratio", type=float, default=None, help="Fraction of samples from replay data (0.0-1.0, e.g. 0.3)")
+    parser.add_argument("--warn_oversample", type=int, default=10, help="Warn when a file is sampled > N times its line count (0=disable)")
     args = parser.parse_args()
     if args.config:
         train(args.config)
