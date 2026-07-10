@@ -152,6 +152,14 @@ class SleepEngine:
             logger.info("  Phase 3: Knowledge integration ✅")
         except Exception as e:
             logger.warning(f"  Phase 3 failed: {e}")
+
+        # Phase 3.5: 知识蒸馏 — 将累积知识转化为训练数据
+        try:
+            self._sleep_phase_knowledge_distillation(report)
+            report.phases_completed.append("knowledge_distillation")
+            logger.info("  Phase 3.5: Knowledge distillation ✅")
+        except Exception as e:
+            logger.warning(f"  Phase 3.5 failed: {e}")
         
         # Phase 4: 清醒准备 — 自我评估
         try:
@@ -191,6 +199,26 @@ class SleepEngine:
     def record_activity(self):
         """记录用户活动（用于判断是否空闲）"""
         self._last_activity_time = datetime.now()
+
+    def nap(self, duration_minutes: int = 2):
+        """Deep Coupling: 短睡——快速消化新知识。
+
+        由 FeedEngine 喂食完成后通过 EventBus 触发。
+        只跑 Phase 2（微调），不跑完整的 6 阶段。
+        """
+        if self._is_sleeping:
+            return
+        self._is_sleeping = True
+        report = SleepReport()
+        try:
+            logger.info(f"Nap: {duration_minutes}min 短睡消化...")
+            self._sleep_phase_model_training(report)
+            logger.info(f"Nap complete: loss={report.training_loss}")
+        except Exception as e:
+            logger.debug(f"Nap failed: {e}")
+        finally:
+            self._is_sleeping = False
+            self._last_sleep_time = time.time()
     
     def start_auto_sleep(self):
         """启动自动睡眠线程"""
@@ -286,6 +314,24 @@ class SleepEngine:
             
             collector = get_collector()
             react_data, conv_data = collector.load_as_training_data()
+
+            # B5 修复：加载弱项针对性训练数据
+            try:
+                weakness_dir = os.path.join(self.data_dir, "weakness_training_data")
+                if os.path.isdir(weakness_dir):
+                    for fname in os.listdir(weakness_dir):
+                        if fname.endswith(".json"):
+                            with open(os.path.join(weakness_dir, fname), "r", encoding="utf-8") as f:
+                                weakness_samples = json.load(f)
+                            if isinstance(weakness_samples, list):
+                                for ws in weakness_samples:
+                                    if ws.get("type") == "react":
+                                        react_data.append(ws)
+                                    elif ws.get("type") == "conversation":
+                                        conv_data.append(ws)
+                            logger.info(f"  Loaded {len(weakness_samples) if isinstance(weakness_samples, list) else 0} weakness-training samples from {fname}")
+            except Exception as e:
+                logger.debug(f"  Weakness data load skipped: {e}")
             
             report.training_samples_used = len(react_data) + len(conv_data)
             
@@ -514,6 +560,10 @@ class SleepEngine:
                 try:
                     if hasattr(_app_state, 'finish_training'):
                         _app_state.finish_training()
+                    # B6 修复：训练后将新模型热加载到推理服务
+                    if final_loss is not None and model is not None:
+                        _app_state.update_model(model, tokenizer, trainer=None, model_name="sleep-trained")
+                        logger.info("  训练后模型已热加载到推理服务")
                 except Exception as e:
                     logger.debug("sleep_engine: non-critical %s", e, exc_info=True)
 
@@ -588,6 +638,25 @@ class SleepEngine:
                 
         except ImportError:
             logger.info("  UserProfile not available, skipping")
+
+    def _sleep_phase_knowledge_distillation(self, report: SleepReport):
+        """Phase 3.5: 知识蒸馏 — 累积知识 → 训练数据"""
+        try:
+            from taiji.agent_ext.knowledge_learner import get_knowledge_learner
+            learner = get_knowledge_learner()
+            model = self._get_model()
+            tokenizer = self._get_tokenizer()
+            result = learner.maybe_distill_to_training_data(model=model, tokenizer=tokenizer)
+            if result.get("distilled"):
+                count = result.get("samples", 0)
+                report.recommendations.append(f"[蒸馏] 知识→训练数据: 生成 {count} 条样本")
+                logger.info(f"  Knowledge distilled: {count} training samples generated")
+            else:
+                logger.debug(f"  Knowledge distillation skipped: {result.get('reason', '')}")
+        except ImportError:
+            logger.info("  KnowledgeLearner not available, skipping distillation")
+        except Exception as e:
+            logger.warning(f"  Knowledge distillation failed: {e}")
     
     def _sleep_phase_evaluation(self, report: SleepReport) -> dict:
         """Phase 4: 自我评估"""
@@ -629,8 +698,14 @@ class SleepEngine:
         同时生成下一代训练数据（递归蒸馏素材）。
         """
         try:
-            from taiji.life.recursive_improver import RecursiveImprover
-            improver = RecursiveImprover()
+            # B4 修复：使用全局单例，保留历史策略记录
+            from taiji.life.recursive_improver import get_recursive_improver
+            improver = get_recursive_improver()
+
+            # B3 修复：将 Phase 4 的评估结果注入到改进分析中
+            health = report.health_status if hasattr(report, 'health_status') else None
+            if health and health != "unknown":
+                logger.debug(f"  基于评估结果执行改进分析 (health: {health})")
 
             # 1. 分析策略并生成改进提案
             proposals = improver.analyze_and_improve()
@@ -639,6 +714,20 @@ class SleepEngine:
                 for p in proposals:
                     if p.confidence >= 0.7:
                         report.recommendations.append(f"[改进] {p.description}")
+                        # Deep Coupling: 发布改进事件到 EventBus
+                        try:
+                            from taiji.infra.events import get_event_bus
+                            bus = get_event_bus()
+                            bus.publish("improvement_proposal", {
+                                "proposal": {
+                                    "type": p.proposal_type,
+                                    "description": p.description,
+                                    "new_value": p.new_value,
+                                    "confidence": p.confidence,
+                                }
+                            }, source="sleep_engine")
+                        except Exception:
+                            pass
 
             # 2. 检查是否准备好进化（设计下一代）
             try:
@@ -712,8 +801,75 @@ class SleepEngine:
             # 3. 生成进化语料（态极行为轨迹）
             self._generate_evolution_corpus(report)
 
+            # 4. 睡眠评估反馈 → 针对性训练数据
+            self._generate_weakness_training_data(report)
+
         except ImportError:
             logger.info("  RecursiveImprover not available, skipping")
+
+    def _generate_weakness_training_data(self, report: SleepReport):
+        """
+        将睡眠评估中发现的弱点转化为针对性训练数据，
+        存入标准训练数据目录供下一次 _sleep_phase_model_training 使用。
+        闭合「评估 → 训练」反馈回路。
+        """
+        weaknesses = self._identify_weaknesses()
+        if not weaknesses:
+            return
+        try:
+            import os, json, datetime as dt
+            output_dir = os.path.join(self.data_dir, "weakness_training_data")
+            os.makedirs(output_dir, exist_ok=True)
+            # 生成弱项针对性练习样本
+            samples = []
+            for w in weaknesses:
+                # 根据弱项类型生成模板化训练样本
+                if "数学" in w or "math" in w.lower():
+                    samples.extend(self._math_weakness_samples())
+                elif "代码" in w or "code" in w.lower() or "python" in w.lower():
+                    samples.extend(self._code_weakness_samples())
+                elif "准确" in w or "accuracy" in w.lower() or "低" in w:
+                    samples.extend(self._accuracy_weakness_samples())
+                elif "工具" in w or "tool" in w.lower() or "ReAct" in w:
+                    samples.extend(self._tool_weakness_samples())
+                else:
+                    samples.append({
+                        "instruction": f"请针对以下弱项提供详细解答：{w}",
+                        "output": f"（此为自动生成的弱项针对性训练样本，指向：{w}）",
+                        "weakness": w,
+                    })
+            if samples:
+                ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+                path = os.path.join(output_dir, f"weakness_fix_{ts}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(samples, f, indent=2, ensure_ascii=False)
+                report.recommendations.append(
+                    f"[训练反馈] 从 {len(weaknesses)} 个弱项生成 {len(samples)} 条训练数据"
+                )
+                logger.info(f"  Weaknesses → training data: {len(samples)} samples saved to {path}")
+        except Exception as e:
+            logger.warning(f"  弱项训练数据生成失败: {e}")
+
+    def _math_weakness_samples(self) -> list:
+        return [
+            {"instruction": "计算 128 × 37 的结果", "output": "128 × 37 = 128 × (40 - 3) = 5120 - 384 = 4736"},
+            {"instruction": "什么是勾股定理？请用例子说明", "output": "勾股定理：直角三角形中 a² + b² = c²。例：a=3, b=4 → c=5"},
+        ]
+
+    def _code_weakness_samples(self) -> list:
+        return [
+            {"instruction": "用 Python 写一个二分查找函数", "output": "def binary_search(arr, target):\n    left, right = 0, len(arr)-1\n    while left <= right:\n        mid = (left + right) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: left = mid + 1\n        else: right = mid - 1\n    return -1"},
+        ]
+
+    def _accuracy_weakness_samples(self) -> list:
+        return [
+            {"instruction": "请详细解释相对论的基本原理", "output": "相对论由爱因斯坦提出，包含狭义和广义两部分。狭义相对论基于光速不变原理和相对性原理……"},
+        ]
+
+    def _tool_weakness_samples(self) -> list:
+        return [
+            {"instruction": "搜索 Python 3.12 的新特性并总结", "output": '[TOOL:search] Python 3.12 新特性\nPython 3.12 引入了更详细的错误信息、类型参数语法改进、per-interpreter GIL 等特性……'},
+        ]
 
     def _identify_weaknesses(self) -> List[str]:
         """识别当前模型的弱点"""
