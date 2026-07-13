@@ -26,6 +26,14 @@ Taiji is a locally-deployed, self-evolving AI system. Unlike static models that 
 
 **递归自进化不是态极的一个功能。它是态极的底层逻辑。**
 
+> Most AI projects ask: "How do we make the model answer better?"
+>
+> Taiji asks a different question: **If we let the AI decide its own path, how far can it go?**
+>
+> Taiji is not a passive Q&A machine. It has native perception, memory, planning, and tool-use modules — not bolted on as plugins, but built into the backbone from day one. More importantly, it can reflect on its own behavior, improve its own strategies, and even design its next-generation architecture while it sleeps.
+>
+> **Recursive self-evolution is not a feature of Taiji. It is the foundation.**
+
 ---
 
 ### 为什么开源？
