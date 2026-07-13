@@ -2,7 +2,7 @@
 
 ## Overview
 
-Taiji is a self-evolving LLM system with four layers:
+Taiji is a self-evolving agent-native AI system with four layers:
 
 ```
 ┌─────────────────────────────────────┐

@@ -1,6 +1,6 @@
 # Contributing to Taiji
 
-Thank you for your interest in contributing! Taiji is a self-evolving LLM framework, and we welcome contributions of all kinds.
+Thank you for your interest in contributing! Taiji is a self-evolving agent-native AI system, and we welcome contributions of all kinds.
 
 ## How to Contribute
 
