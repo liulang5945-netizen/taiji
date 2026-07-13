@@ -15,7 +15,7 @@
     "tokenizer_path": "taiji/tokenizer_native_v2/sentencepiece.model",
     "contract_path": "taiji/tokenizer_native_v2/tokenizer_contract.json",
     "output_dir": "taiji_checkpoints/phase_a",
-    "resume_from_checkpoint": "E:/taiji/checkpoint-400000",
+    "resume_from_checkpoint": "./checkpoint-400000",
     "replay_data_dir": "taiji_data/training_data/pretrain_mix_v1",
     "replay_ratio": 0.30,
     "warn_oversample": 5,

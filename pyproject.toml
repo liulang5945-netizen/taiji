@@ -7,7 +7,7 @@ name = "taiji"
 version = "1.6.0"
 description = "Taiji (态极) - Locally-deployed AI Life Form System"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-only"}
 requires-python = ">=3.10"
 dependencies = [
     # Deep Learning

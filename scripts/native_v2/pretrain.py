@@ -288,11 +288,13 @@ class StreamingNativeDataset(IterableDataset):
         self.max_length = max_length
         self.buffer_size = buffer_size
         self.category_weights = category_weights
-        self.warn_oversample = warn_oversample
-        # Track file usage for oversampling detection
+        self.max_oversample = warn_oversample  # 0 = unlimited; >0 = hard cap (× file line count)
+        # Track file usage for oversampling detection and capping
         self._file_lines: dict[str, int] = {}
         self._file_sampled: dict[str, int] = {}
+        self._file_lines_read: dict[str, int] = {}  # per-epoch counter, reset each __iter__
         self._oversample_warned: set[str] = set()
+        self._oversample_capped: set[str] = set()   # files that hit cap this epoch
 
     def _count_lines(self, filepath: str) -> int:
         """Count lines in a file (cached)."""
@@ -330,21 +332,29 @@ class StreamingNativeDataset(IterableDataset):
                     uncategorized.append(path)
         return categorized, uncategorized
 
-    def _check_oversample(self, filepath: str):
-        """Warn if a file is being oversampled relative to its line count."""
-        if self.warn_oversample <= 0:
-            return
-        if filepath in self._oversample_warned:
-            return
-        sampled = self._file_sampled.get(filepath, 0)
+    def _check_oversample(self, filepath: str) -> bool:
+        """Check if a file has exceeded its oversampling cap.
+
+        Returns True if the file should be skipped (cap reached), False otherwise.
+        When max_oversample=0, oversampling is unlimited (never cap).
+        """
+        if self.max_oversample <= 0:
+            return False
         total_lines = self._count_lines(filepath)
-        if total_lines > 0 and sampled > total_lines * self.warn_oversample:
-            category = _categorize_path(filepath) if self.category_weights else "general"
-            fname = os.path.basename(filepath)
-            print(f"WARNING: File oversampled! {fname} ({category}, {total_lines:,} lines) "
-                  f"sampled {sampled:,} times ({sampled//max(total_lines,1)}x per line). "
-                  f"Consider adding more {category} data or reducing its weight.")
-            self._oversample_warned.add(filepath)
+        if total_lines <= 0:
+            return False
+        lines_read = self._file_lines_read.get(filepath, 0)
+        cap = total_lines * self.max_oversample
+        if lines_read >= cap:
+            if filepath not in self._oversample_capped:
+                fname = os.path.basename(filepath)
+                category = _categorize_path(filepath) if self.category_weights else "general"
+                print(f"CAP: {fname} ({category}, {total_lines:,} lines) "
+                      f"hit oversample cap {self.max_oversample}× ({lines_read:,}/{cap:,} lines read). "
+                      f"Skipping for rest of epoch.")
+                self._oversample_capped.add(filepath)
+            return True
+        return False
 
     def _get_shard_files(self):
         """Get all JSONL files grouped by category with optional replay mixing."""
@@ -443,15 +453,24 @@ class StreamingNativeDataset(IterableDataset):
         return line
 
     def __iter__(self):
-        """Iterate over data with shuffle buffer."""
+        """Iterate over data with shuffle buffer and oversample capping.
+
+        Each file is capped at max_oversample × its line count per epoch.
+        When a file reaches the cap, it's skipped for the rest of the epoch.
+        """
+        # Reset per-epoch counters
+        self._file_lines_read.clear()
+        self._oversample_capped.clear()
         buffer = []
         for shard_file in self._get_shard_files():
             # Track file usage for oversampling detection
             self._file_sampled[shard_file] = self._file_sampled.get(shard_file, 0) + 1
-            self._check_oversample(shard_file)
+            # Skip files that already hit their cap in this epoch
+            if self._check_oversample(shard_file):
+                continue
             try:
                 with open(shard_file, "r", encoding="utf-8", errors="ignore") as f:
-                    lines_read = 0
+                    file_lines_read = 0
                     for line in f:
                         line = line.strip()
                         if len(line) <= 40:
@@ -471,6 +490,16 @@ class StreamingNativeDataset(IterableDataset):
                             idx = random.randint(0, len(buffer) - 1)
                             yield buffer[idx]
                             buffer[idx] = sample
+
+                        file_lines_read += 1
+                        # Check cap mid-file: if exceeded, stop reading this file
+                        if (self.max_oversample > 0 and
+                            file_lines_read >= self._count_lines(shard_file) * self.max_oversample):
+                            break
+
+                    self._file_lines_read[shard_file] = (
+                        self._file_lines_read.get(shard_file, 0) + file_lines_read
+                    )
             except OSError:
                 continue
 
@@ -922,7 +951,7 @@ if __name__ == "__main__":
     parser.add_argument("--keep_last_checkpoints", type=int, default=3, help="Number of recent checkpoints to keep")
     parser.add_argument("--replay_data_dir", default=None, help="Directory with old training data to mix in (prevents catastrophic forgetting)")
     parser.add_argument("--replay_ratio", type=float, default=None, help="Fraction of samples from replay data (0.0-1.0, e.g. 0.3)")
-    parser.add_argument("--warn_oversample", type=int, default=10, help="Warn when a file is sampled > N times its line count (0=disable)")
+    parser.add_argument("--warn_oversample", type=int, default=10, help="Hard cap: skip file after N× its line count per epoch (0=unlimited)")
     args = parser.parse_args()
     if args.config:
         train(args.config)

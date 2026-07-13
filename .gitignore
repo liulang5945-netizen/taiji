@@ -122,3 +122,25 @@ tokenizer_native_v2/
 
 # Temporary scripts
 scripts/download_*
+
+# Environment files (API keys, secrets)
+.env
+.env.*
+.env.local
+.env.production
+
+# Checkpoint directories (large model files)
+checkpoint-*/
+FINAL/
+
+# Frontend dev logs
+frontend/.dev*.log
+
+# Temporary/dev scripts
+_test_*.py
+_fix_*.py
+_add_*.py
+.write_test
+
+# Auto-generated cache
+taiji/agent_ext/mcp_remote_cache.json
