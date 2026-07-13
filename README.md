@@ -1,7 +1,7 @@
 # Taiji（态极）— 一个自进化的 Agent-Native AI 系统
 
 <p align="center">
-  <strong>使用、学习、进化 — 一个活的 AI 系统</strong>
+  <strong>不是教 AI 怎么回答问题，而是让 AI 自己决定怎么走。</strong>
 </p>
 
 <p align="center">
@@ -10,9 +10,21 @@
   <a href=".github/workflows/test.yml"><img src="https://img.shields.io/badge/CI-passing-brightgreen" alt="CI Status"></a>
 </p>
 
-Taiji is a locally-deployed, self-evolving AI system with agent capabilities built into its architecture — not bolted on as an afterthought. Unlike static models that freeze after training, Taiji continues to learn, adapt, and grow through real-world use.
+Taiji is a locally-deployed, self-evolving AI system. Unlike static models that freeze after training, Taiji continues to learn, adapt, and grow — and its architecture is designed to let the AI decide its own path forward.
 
-> **态极** 是一个本地部署的自进化 AI 系统，在架构层面原生集成了 Agent 能力。与训练完就冻结的静态模型不同，态极会通过每一次交互持续学习、适应和成长。
+> **态极** 是一个本地部署的自进化 AI 系统。与训练完就冻结的静态模型不同，态极会通过每一次交互持续学习、适应和成长——它的架构设计围绕一个信念：让 AI 自己决定自己的方向。
+
+---
+
+### 核心思想
+
+大多数 AI 项目在教模型"怎么回答问题"。
+
+态极想问的是另一个问题：**如果让 AI 自己决定自己的路，它能走多远？**
+
+态极不是一个被动的问答机器。它有自己的感知模块、记忆系统、规划引擎和工具调用能力——这些不是后装上去的插件，而是从第一天就内建在 backbone 里的原生 Agent 头。更重要的是，它能反思自己的行为、改进自己的策略、甚至在睡眠中设计自己的下一代架构。
+
+**递归自进化不是态极的一个功能。它是态极的底层逻辑。**
 
 ---
 
