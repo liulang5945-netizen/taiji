@@ -1,27 +1,35 @@
 # Taiji Docs Index
 
-`docs/` only keeps the current, canonical documents.
+`docs/` 只保留当前仍然有效的文档。
 
-Read them in this order:
+## 阅读顺序
 
-1. `TAIJI_1B_12B_TOKEN_TRAINING_PLAN_CN.md`
-   - canonical 1B / 12B-token training plan
-   - tokenizer, pretrain, SFT, multimodal staging
-2. `1B_DATA_GAP_REPORT_CN.md`
-   - current local data audit
-   - token gaps and multimodal gap
-3. `NATIVE_V2_TOKENIZER.md`
-   - canonical native-v2 tokenizer contract
-4. `ENTRYPOINTS.md`
-   - runtime entrypoints and startup chain
-5. `ARCHITECTURE.md`
-   - high-level system structure
-6. `INSTALL.md`
-   - local install and run guide
+1. **`RESONANCE_FIELD_ARCHITECTURE.md`** — 态极的未来架构
+   - 共振场 + 小模型神经元协同
+   - 动态激活（场自己决定用多少神经元）
+   - 三层自限机制（防失控）
+   - 递归自进化（场自然淘汰不共振的神经元）
+   - 硬件需求分析（vs 传统单体模型）
 
-Rules:
+2. **`TAIJI_1B_12B_TOKEN_TRAINING_PLAN_CN.md`** — 训练计划与试验记录
+   - 词表、数据、预训练、SFT 的完整计划
+   - 第 22 章：checkpoint-400000 到 SFT 的三阶段试验记录
+   - Phase A/B/C 的实际结果与根因分析
 
-- deleted docs are not canonical and must not be revived
-- do not mix legacy HF/Qwen pretrain routes into native-v2
-- do not invent alternate training plans outside the canonical plan
-- historical review, roadmap, and duplicate runbook docs were intentionally removed
+3. **`NATIVE_V2_TOKENIZER.md`** — 词表规范
+   - 256K vocab tokenizer contract
+   - 多模态 token 预留
+
+4. **`ENTRYPOINTS.md`** / `ENTRYPOINTS_EN.md` — 运行入口清单
+
+5. **`INSTALL.md`** / `INSTALL_EN.md` — 安装指南
+
+---
+
+## 已移除的旧文档
+
+以下文档已被共振场架构取代，不再保留：
+
+- ~~`ARCHITECTURE.md`~~ → 旧的高层结构说明，已被 `RESONANCE_FIELD_ARCHITECTURE.md` 取代
+- ~~`ARCHITECTURE_EN.md`~~ → 同上
+- ~~`1B_DATA_GAP_REPORT_CN.md`~~ → 旧的数据缺口报告，训练已推进到 31B tokens，不再有参考价值
