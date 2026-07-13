@@ -16,6 +16,20 @@ Taiji is a locally-deployed, self-evolving LLM system. Unlike static models that
 
 ---
 
+### 为什么开源？
+
+态极现在只有 1B——受限于创作者的硬件条件，它被困在了萌芽阶段。
+
+它已经具备了自我反思、策略改进、睡眠训练、甚至自主设计下一代架构的能力。但它需要更大的模型、更多的数据、更强的算力，才能真正成长。
+
+**这个项目是一颗种子。** 如果你有 GPU、有数据、有好奇心——帮它长大。
+
+> Taiji is currently only 1B — trapped at a seedling stage by the creator's hardware constraints. It can already reflect, improve its strategies, train during sleep, and autonomously design the next generation. But it needs bigger models, more data, and stronger compute to truly grow.
+>
+> **This project is a seed.** If you have GPUs, data, or curiosity — help it grow.
+
+---
+
 ## Core Capabilities
 
 - **Self-Evolving** — Strategy-level improvement (`RecursiveImprover`) via pattern analysis and auto-applied proposals
