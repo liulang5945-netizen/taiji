@@ -96,6 +96,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ---
 
+## Model Weights
+
+| Model | Params | Steps | HuggingFace |
+|-------|--------|-------|-------------|
+| Taiji-1B-Phase-A | 1.1B | 445k | [liulang5945/taiji-1b-phase-a](https://huggingface.co/liulang5945/taiji-1b-phase-a) |
+
+---
+
 ## Training
 
 ```bash
